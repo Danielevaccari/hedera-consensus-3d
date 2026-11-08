@@ -1,12 +1,18 @@
-// Dotted land for the globe: rasterise Natural Earth land polygons onto a small equirectangular
-// canvas, then keep the points of an even (Fibonacci) sphere grid that fall on land.
-// The map data and topojson are loaded on first use, so the tower view never downloads them.
-import { MathUtils, Vector3 } from "three";
+// Natural Earth land polygons rasterised onto an equirectangular canvas. The map data and topojson
+// are loaded on first use, so the tower view never downloads them.
 import type { GeometryObject, Topology } from "topojson-specification";
-import { latLonToUnit } from "./geo";
 
 type Ring = number[][];
 type Poly = Ring[];
+
+export interface LandRaster {
+    /** white land on transparent ocean */
+    canvas: HTMLCanvasElement;
+    /** the canvas's alpha channel, one byte per pixel (255 = land) */
+    alpha: Uint8Array;
+    w: number;
+    h: number;
+}
 
 function polygonsOf(geo: unknown): Poly[] {
     const out: Poly[] = [];
@@ -25,8 +31,7 @@ function polygonsOf(geo: unknown): Poly[] {
     return out;
 }
 
-/** Positions (x, y, z triples) of land dots on a sphere of the given radius. */
-export async function buildLandPoints(radius: number, count = 42000): Promise<Float32Array> {
+export async function rasterizeLand(w = 2048, h = 1024): Promise<LandRaster> {
     const [topojson, landModule] = await Promise.all([
         import("topojson-client"),
         import("world-atlas/land-110m.json"),
@@ -35,18 +40,16 @@ export async function buildLandPoints(radius: number, count = 42000): Promise<Fl
     const land = topo.objects.land as GeometryObject;
     const polys = polygonsOf(topojson.feature(topo, land));
 
-    const W = 2048;
-    const H = 1024;
-    const cv = document.createElement("canvas");
-    cv.width = W;
-    cv.height = H;
-    const ctx = cv.getContext("2d", { willReadFrequently: true })!;
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
     ctx.fillStyle = "#fff";
-    const px = (lon: number) => ((lon + 180) / 360) * W;
-    const py = (lat: number) => ((90 - lat) / 180) * H;
+    const px = (lon: number) => ((lon + 180) / 360) * w;
+    const py = (lat: number) => ((90 - lat) / 180) * h;
     for (const poly of polys) {
         // draw shifted copies so rings that cross ±180° still fill correctly
-        for (const off of [-W, 0, W]) {
+        for (const off of [-w, 0, w]) {
             ctx.beginPath();
             for (const ring of poly) {
                 let prevLon: number | null = null;
@@ -66,21 +69,8 @@ export async function buildLandPoints(radius: number, count = 42000): Promise<Fl
         }
     }
 
-    const img = ctx.getImageData(0, 0, W, H).data;
-    const pts: number[] = [];
-    const golden = Math.PI * (3 - Math.sqrt(5));
-    const v = new Vector3();
-    for (let i = 0; i < count; i++) {
-        const y = 1 - (2 * (i + 0.5)) / count;
-        const th = golden * i;
-        const lat = MathUtils.radToDeg(Math.asin(y));
-        let lon = MathUtils.radToDeg(th) % 360;
-        if (lon > 180) lon -= 360;
-        const ix = Math.min(W - 1, Math.floor(px(lon)));
-        const iy = Math.min(H - 1, Math.floor(py(lat)));
-        if (img[(iy * W + ix) * 4 + 3] < 128) continue;
-        latLonToUnit(lat, lon, v).multiplyScalar(radius);
-        pts.push(v.x, v.y, v.z);
-    }
-    return new Float32Array(pts);
+    const rgba = ctx.getImageData(0, 0, w, h).data;
+    const alpha = new Uint8Array(w * h);
+    for (let i = 0; i < alpha.length; i++) alpha[i] = rgba[i * 4 + 3];
+    return { canvas, alpha, w, h };
 }

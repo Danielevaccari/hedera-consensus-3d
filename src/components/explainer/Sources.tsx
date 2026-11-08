@@ -63,7 +63,9 @@ export function Sources() {
                 that is given), and nodes in the same city are spread apart slightly so each stays
                 visible. The arcs connect each transaction to the next one in the real consensus
                 order; they are not network paths. Hedera does not publish where clients are, so the
-                globe does not draw that. Land outlines: Natural Earth via the world-atlas package.
+                globe does not draw that. The earth is generated from Natural Earth land outlines
+                (world-atlas package): its colours, ice and clouds are stylised, not satellite
+                imagery.
             </p>
         </section>
     );
