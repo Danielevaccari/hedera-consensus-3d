@@ -1,0 +1,101 @@
+/* ---------- flashy mode (body.fx): glow, neon and motion on top of the calm design ---------- */
+body.fx .stage {
+    background: radial-gradient(1200px 700px at 50% 35%, #1b1150 0%, #0a0d2b 50%, var(--bg) 100%);
+}
+body.fx .brand h1 span {
+    background: linear-gradient(90deg, var(--cyan), var(--violet), var(--pink), var(--cyan));
+    background-size: 300% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: sheen 6s linear infinite;
+}
+@keyframes sheen {
+    to {
+        background-position: 300% 0;
+    }
+}
+@keyframes pulse {
+    50% {
+        box-shadow: 0 0 0 8px rgba(253, 224, 71, 0);
+    }
+}
+@keyframes slideinfx {
+    from {
+        opacity: 0;
+        background: rgba(34, 211, 238, 0.3);
+        box-shadow: inset 3px 0 0 var(--cyan);
+    }
+}
+body.fx .glass {
+    border-color: rgba(167, 139, 250, 0.32);
+    box-shadow:
+        0 0 0 1px rgba(34, 211, 238, 0.1),
+        0 10px 40px rgba(0, 0, 0, 0.45),
+        0 0 30px rgba(124, 58, 237, 0.22),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+body.fx .live i,
+body.fx .card h2 .dot {
+    box-shadow: 0 0 10px var(--green);
+    animation: blink 1.6s infinite;
+}
+body.fx .live.bad i,
+body.fx .card h2 .dot.bad {
+    box-shadow: 0 0 10px var(--red);
+}
+body.fx .steps li.done .ic {
+    box-shadow: 0 0 12px rgba(74, 222, 128, 0.55);
+}
+body.fx .steps li.active .ic {
+    animation: pulse 1.2s infinite;
+}
+body.fx .tx-head .star {
+    box-shadow: 0 0 18px rgba(253, 224, 71, 0.35);
+}
+body.fx .ledger li {
+    animation: slideinfx 0.6s ease-out;
+}
+body.fx .kind,
+body.fx .sw.k {
+    box-shadow: 0 0 10px var(--k);
+}
+body.fx .whale {
+    box-shadow: 0 0 10px rgba(253, 224, 71, 0.45);
+}
+body.fx .stat b {
+    text-shadow: 0 0 14px rgba(103, 232, 249, 0.45);
+}
+body.fx .chart canvas {
+    filter: drop-shadow(0 0 5px rgba(103, 232, 249, 0.35));
+}
+body.fx .btn.primary {
+    box-shadow: 0 0 18px rgba(34, 211, 238, 0.35);
+}
+body.fx .btn.gold {
+    box-shadow: 0 0 18px rgba(253, 224, 71, 0.3);
+}
+body.fx .sw.blk {
+    box-shadow: 0 0 8px var(--cyan);
+}
+body.fx .sw.now {
+    box-shadow: 0 0 8px var(--gold);
+}
+body.fx .fx-toggle {
+    background: linear-gradient(
+        120deg,
+        rgba(244, 114, 182, 0.35),
+        rgba(167, 139, 250, 0.35),
+        rgba(34, 211, 238, 0.35),
+        rgba(244, 114, 182, 0.35)
+    );
+    background-size: 300% 100%;
+    border-color: rgba(244, 114, 182, 0.65);
+    box-shadow: 0 0 22px rgba(244, 114, 182, 0.4);
+    animation: sheen 4s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+    body.fx * {
+        animation: none !important;
+    }
+}

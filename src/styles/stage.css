@@ -1,0 +1,527 @@
+/*
+ * The stage: the 3D viewport fills the screen and the HUD sits on a grid on top of it.
+ *
+ *   ┌──────────── top bar ────────────┐
+ *   │ journey │               │ ledger │
+ *   │         │               │  log   │
+ *   │         │    charts     │        │
+ *   └────────── control bar ──────────┘
+ *
+ * Only the panels themselves catch the pointer; everything else falls through to the canvas.
+ */
+.stage {
+    position: relative;
+    height: 100vh;
+    height: 100dvh;
+    min-height: 600px;
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: 272px minmax(0, 1fr) 300px;
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    gap: var(--gap);
+    padding: 10px;
+    background: radial-gradient(1200px 700px at 50% 35%, #0d1630 0%, #060a16 55%, var(--bg) 100%);
+}
+.viewport {
+    position: absolute;
+    inset: 0;
+}
+.viewport canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: grab;
+    touch-action: none;
+}
+.viewport canvas:active {
+    cursor: grabbing;
+}
+
+.hud {
+    position: relative;
+    z-index: 2;
+    min-width: 0;
+    min-height: 0;
+}
+.hud-top {
+    grid-column: 1 / -1;
+    grid-row: 1;
+}
+.hud-left,
+.hud-right {
+    grid-row: 2 / 4;
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap);
+    pointer-events: none;
+}
+.hud-left {
+    grid-column: 1;
+}
+.hud-right {
+    grid-column: 3;
+}
+.hud-left > *,
+.hud-right > * {
+    pointer-events: auto;
+}
+.charts {
+    grid-column: 2;
+    grid-row: 3;
+    align-self: end;
+}
+.hud-bottom {
+    grid-column: 1 / -1;
+    grid-row: 4;
+}
+
+/* ---------- top bar: title + live badge + stats in one slim row ---------- */
+.hud-top {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 8px 6px 14px;
+}
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 0 1 auto;
+    cursor: help;
+}
+.brand h1 {
+    margin: 0;
+    font-size: 15px;
+    letter-spacing: -0.01em;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.brand h1 span {
+    color: var(--cyan);
+}
+.live {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 1px 7px;
+    border-radius: 20px;
+    font-family: var(--mono);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: var(--green);
+    background: rgba(74, 222, 128, 0.1);
+    border: 1px solid rgba(74, 222, 128, 0.35);
+    flex: none;
+}
+.live i {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+}
+.live.bad {
+    color: var(--red);
+    background: rgba(248, 113, 113, 0.1);
+    border-color: rgba(248, 113, 113, 0.4);
+}
+.live.bad i {
+    background: var(--red);
+}
+.stats {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+.stat {
+    padding: 3px 8px;
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid var(--line);
+    text-align: right;
+}
+.stat b {
+    display: block;
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.stat small {
+    display: block;
+    color: var(--muted);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    white-space: nowrap;
+}
+
+/* ---------- charts strip ---------- */
+.charts {
+    height: 64px;
+    padding: 6px 10px;
+    display: grid;
+    grid-template-columns: 1.3fr 1fr 1.3fr;
+    gap: 12px;
+    pointer-events: none;
+}
+.chart {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+.chart small {
+    font-size: 9.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+    gap: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+}
+.chart small b {
+    color: var(--text);
+    font-family: var(--mono);
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* height comes from the strip, not from the canvas buffer */
+.chart canvas {
+    flex: 1 1 0;
+    height: 0;
+    width: 100%;
+    min-height: 0;
+    display: block;
+    margin-top: 4px;
+}
+
+/* ---------- control bar ---------- */
+.hud-bottom {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 6px 8px;
+}
+.fx-toggle {
+    min-width: 84px;
+    justify-content: center;
+}
+.hint {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--dim);
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    padding-right: 4px;
+}
+
+/* ---------- legend popover ---------- */
+.legend-wrap {
+    position: relative;
+}
+.legend {
+    position: absolute;
+    bottom: calc(100% + 10px);
+    left: 0;
+    z-index: 4;
+    width: 340px;
+    max-width: calc(100vw - 32px);
+    padding: 12px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 7px 14px;
+    font-size: 12px;
+    color: var(--muted);
+    background: var(--panel-solid);
+    animation: slidein 0.15s ease-out;
+}
+.legend-src {
+    grid-column: 1 / -1;
+    margin: 4px 0 0;
+    padding-top: 8px;
+    border-top: 1px solid var(--line);
+    font-size: 11px;
+    color: var(--dim);
+}
+.lg {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+.sw {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    flex: none;
+}
+.sw.k {
+    width: 9px;
+    height: 9px;
+    background: var(--k);
+}
+.sw.fail {
+    width: 9px;
+    height: 9px;
+    background: var(--red);
+}
+.sw.trk {
+    background: var(--gold);
+    clip-path: polygon(
+        50% 0,
+        61% 35%,
+        98% 35%,
+        68% 57%,
+        79% 91%,
+        50% 70%,
+        21% 91%,
+        32% 57%,
+        2% 35%,
+        39% 35%
+    );
+}
+.sw.wh {
+    background: var(--gold);
+    box-shadow: 0 0 0 3px rgba(253, 224, 71, 0.25);
+}
+.sw.thread,
+.sw.blk,
+.sw.now {
+    border-radius: 2px;
+    width: 16px;
+    height: 2px;
+}
+.sw.thread {
+    background: linear-gradient(90deg, #5eead4, #c4b5fd, #fdba74);
+}
+.sw.blk {
+    background: var(--cyan);
+}
+.sw.now {
+    background: var(--gold);
+}
+.sw.stake {
+    width: 13px;
+    height: 13px;
+    background: var(--violet);
+    box-shadow: -10px 3px 0 -4px var(--violet);
+    margin-left: 7px;
+}
+
+/* ---------- overlays inside the viewport ---------- */
+.tip {
+    position: absolute;
+    z-index: 5;
+    pointer-events: none;
+    min-width: 220px;
+    max-width: 320px;
+    padding: 10px 12px;
+    font-size: 12px;
+    line-height: 1.5;
+    opacity: 0;
+    transform: translateY(4px);
+    transition:
+        opacity 0.12s,
+        transform 0.12s;
+}
+.tip.show {
+    opacity: 1;
+    transform: none;
+}
+.tip h4 {
+    margin: 0 0 6px;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.tip h4 i {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+}
+.tip .kv {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 2px 10px;
+    margin: 0;
+    font-family: var(--mono);
+    font-size: 11px;
+}
+.tip .kv dt {
+    color: var(--muted);
+}
+.tip .kv dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+.tip .note {
+    margin-top: 7px;
+    color: var(--muted);
+    font-size: 11.5px;
+    border-top: 1px solid var(--line);
+    padding-top: 6px;
+}
+
+.present-exit {
+    position: absolute;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 6;
+    padding: 6px 12px;
+    font-size: 12px;
+    color: var(--muted);
+    pointer-events: none;
+    white-space: nowrap;
+    animation: fadeout 4s forwards;
+}
+@keyframes fadeout {
+    0%,
+    70% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+    }
+}
+
+.loading {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    z-index: 10;
+    color: var(--muted);
+    font-size: 14px;
+    background: var(--bg);
+    transition: opacity 0.6s;
+    text-align: center;
+    padding: 0 16px;
+}
+.loading.gone {
+    opacity: 0;
+    pointer-events: none;
+}
+.loading .spin {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: 2px solid var(--line2);
+    border-top-color: var(--cyan);
+    animation: spin 1s linear infinite;
+    margin: 0 auto 12px;
+}
+.loading .err {
+    max-width: 440px;
+    line-height: 1.6;
+}
+.loading .err b {
+    color: var(--red);
+}
+.loading .err .btn {
+    margin-top: 14px;
+}
+
+/* presentation mode: only the 3D view */
+body.present .stage {
+    padding: 0;
+}
+
+/* ---------- narrower screens: stack everything around a fixed-height viewport ---------- */
+@media (max-width: 1280px) {
+    .stage {
+        grid-template-columns: 250px minmax(0, 1fr) 280px;
+    }
+    .stat:nth-child(4) {
+        display: none; /* ping share: least important stat */
+    }
+}
+@media (max-width: 1100px) {
+    .stage {
+        height: auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        padding: 10px 10px 14px;
+        overflow: visible;
+    }
+    .viewport {
+        position: relative;
+        order: 2;
+        height: 62vh;
+        min-height: 380px;
+        border-radius: var(--radius);
+        overflow: hidden;
+        border: 1px solid var(--line);
+    }
+    body.present .viewport {
+        height: 100vh;
+        border: 0;
+        border-radius: 0;
+    }
+    .hud-top {
+        order: 1;
+        flex-wrap: wrap;
+    }
+    .stats {
+        margin-left: 0;
+        justify-content: flex-start;
+    }
+    .stat:nth-child(4) {
+        display: block;
+    }
+    .charts {
+        order: 3;
+        height: 78px;
+    }
+    .hud-bottom {
+        order: 4;
+    }
+    .hud-left {
+        order: 5;
+    }
+    .hud-right {
+        order: 6;
+    }
+    .hud-left .card,
+    .hud-right .card {
+        max-height: 360px;
+    }
+    .hint {
+        display: none;
+    }
+}
+@media (max-width: 640px) {
+    .brand {
+        flex-wrap: wrap;
+    }
+    .stat {
+        flex: 1 1 22%;
+    }
+    .charts {
+        grid-template-columns: 1fr;
+        height: auto;
+    }
+    .chart canvas {
+        height: 40px;
+        flex: none;
+    }
+}

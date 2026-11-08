@@ -1,0 +1,207 @@
+/* ---------- "How it works" ---------- */
+.explain {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 44px 20px 24px;
+}
+.eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--cyan);
+}
+.explain h2 {
+    font-size: clamp(22px, 3vw, 32px);
+    letter-spacing: -0.02em;
+    margin: 6px 0 8px;
+    line-height: 1.1;
+}
+.lede {
+    color: var(--muted);
+    font-size: 14.5px;
+    line-height: 1.55;
+    max-width: 760px;
+    margin: 0 0 20px;
+}
+.numbers {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+    margin-bottom: 20px;
+}
+.num {
+    padding: 11px 12px;
+    border-radius: var(--radius);
+    background: linear-gradient(160deg, rgba(34, 211, 238, 0.07), rgba(167, 139, 250, 0.04));
+    border: 1px solid var(--line);
+}
+.num b {
+    font-family: var(--mono);
+    font-size: 20px;
+    display: block;
+    letter-spacing: -0.03em;
+}
+.num span {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.4;
+    display: block;
+    margin-top: 3px;
+}
+.num span b {
+    display: inline;
+    font-family: inherit;
+    font-size: inherit;
+    letter-spacing: 0;
+    color: var(--text);
+}
+.num em {
+    font-style: normal;
+    color: var(--text);
+}
+.grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+}
+.piece {
+    border-radius: 14px;
+    padding: 13px;
+    background: linear-gradient(180deg, #0b1224, #080d1b);
+    border: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    position: relative;
+    overflow: hidden;
+}
+.piece::after {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: 14px;
+    padding: 1px;
+    background: linear-gradient(140deg, var(--acc, var(--cyan)), transparent 45%);
+    -webkit-mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    opacity: 0.55;
+    pointer-events: none;
+}
+.piece .no {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--acc, var(--cyan));
+    letter-spacing: 0.12em;
+}
+.piece h3 {
+    margin: 0;
+    font-size: 15px;
+    letter-spacing: -0.01em;
+}
+.piece p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 12.5px;
+    line-height: 1.5;
+}
+.piece p b {
+    color: var(--text);
+    font-weight: 600;
+}
+.piece svg {
+    width: 100%;
+    height: auto;
+    max-height: 118px;
+    border-radius: 10px;
+    background: radial-gradient(circle at 50% 40%, rgba(255, 255, 255, 0.035), transparent 70%);
+    display: block;
+}
+.piece svg text {
+    font-family: var(--mono);
+}
+svg .flow {
+    stroke-dasharray: 4 5;
+    animation: flow 1.4s linear infinite;
+}
+@keyframes flow {
+    to {
+        stroke-dashoffset: -18;
+    }
+}
+.anatomy {
+    font-family: var(--mono);
+    font-size: 11px;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--line2);
+}
+.anatomy div {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 4px 9px;
+    border-bottom: 1px solid var(--line);
+}
+.anatomy div:last-child {
+    border-bottom: none;
+}
+.anatomy div span:first-child {
+    color: var(--muted);
+}
+.anatomy .h {
+    background: rgba(167, 139, 250, 0.1);
+    color: var(--violet);
+    justify-content: center;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+}
+.sources {
+    margin-top: 24px;
+    padding: 16px;
+    border-radius: var(--radius);
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.015);
+    color: var(--muted);
+    font-size: 12.5px;
+    line-height: 1.55;
+}
+.sources h3 {
+    margin: 0 0 6px;
+    color: var(--text);
+    font-size: 13.5px;
+}
+.sources ol {
+    margin: 0;
+    padding-left: 18px;
+}
+.sources p {
+    margin: 10px 0 0;
+}
+.sources p b {
+    color: var(--text);
+}
+footer {
+    text-align: center;
+    color: var(--dim);
+    font-size: 12px;
+    padding: 12px 20px 28px;
+}
+
+@media (max-width: 1180px) {
+    .grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .numbers {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+@media (max-width: 640px) {
+    .grid,
+    .numbers {
+        grid-template-columns: 1fr;
+    }
+}
