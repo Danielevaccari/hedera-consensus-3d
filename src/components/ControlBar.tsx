@@ -26,11 +26,25 @@ export function ControlBar() {
             </button>
             <button
                 type="button"
-                className="btn fx-toggle"
-                title={o.fx ? "Switch to the calm, plain design" : "Switch to the flashy design"}
-                onClick={() => engine.toggleFx()}>
-                {o.fx ? "✦ Flashy" : "◐ Calm"}
+                className="btn"
+                title={
+                    o.theme === "dark" ? "Switch to the light theme" : "Switch to the dark theme"
+                }
+                onClick={() => engine.toggleTheme()}>
+                {o.theme === "dark" ? "☀ Light" : "☾ Dark"}
             </button>
+            {/* bloom and neon effects need a dark background */}
+            {o.theme === "dark" && (
+                <button
+                    type="button"
+                    className="btn fx-toggle"
+                    title={
+                        o.fx ? "Switch to the calm, plain design" : "Switch to the flashy design"
+                    }
+                    onClick={() => engine.toggleFx()}>
+                    {o.fx ? "✦ Flashy" : "◐ Calm"}
+                </button>
+            )}
             <button
                 type="button"
                 className={`btn${o.hidePings ? " on" : ""}`}

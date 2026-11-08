@@ -2,7 +2,7 @@
 import type { ChartData } from "../engine/snapshot";
 
 const FONT = '600 10px "JetBrains Mono", Consolas, monospace';
-const CYAN = "#22d3ee";
+const cyan = (light: boolean) => (light ? "#0891b2" : "#22d3ee");
 
 /** Matches the canvas buffer to its CSS size and device pixel ratio. */
 function prepare(cv: HTMLCanvasElement): [CanvasRenderingContext2D, number, number] {
@@ -21,7 +21,8 @@ function prepare(cv: HTMLCanvasElement): [CanvasRenderingContext2D, number, numb
 }
 
 /** Area chart of tx/s, oldest on the left. Returns the peak. */
-export function drawRate(cv: HTMLCanvasElement, data: ChartData, fx: boolean) {
+export function drawRate(cv: HTMLCanvasElement, data: ChartData, fx: boolean, light: boolean) {
+    const CYAN = cyan(light);
     const [ctx, w, h] = prepare(cv);
     const vals = data.rate;
     const mx = Math.max(0.5, ...vals);
@@ -33,8 +34,9 @@ export function drawRate(cv: HTMLCanvasElement, data: ChartData, fx: boolean) {
         pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
     };
     const g = ctx.createLinearGradient(0, 0, 0, h);
-    g.addColorStop(0, fx ? "rgba(34,211,238,.45)" : "rgba(34,211,238,.28)");
-    g.addColorStop(1, "rgba(34,211,238,0)");
+    const rgb = light ? "8,145,178" : "34,211,238";
+    g.addColorStop(0, `rgba(${rgb},${fx ? 0.45 : 0.28})`);
+    g.addColorStop(1, `rgba(${rgb},0)`);
     path();
     ctx.lineTo(w, h);
     ctx.lineTo(0, h);
@@ -55,7 +57,7 @@ export function drawRate(cv: HTMLCanvasElement, data: ChartData, fx: boolean) {
 }
 
 /** Transaction type mix as one stacked bar. */
-export function drawMix(cv: HTMLCanvasElement, data: ChartData, fx: boolean) {
+export function drawMix(cv: HTMLCanvasElement, data: ChartData, fx: boolean, light: boolean) {
     const [ctx, w, h] = prepare(cv);
     ctx.font = FONT;
     ctx.textBaseline = "middle";
@@ -63,7 +65,7 @@ export function drawMix(cv: HTMLCanvasElement, data: ChartData, fx: boolean) {
     for (const { kind, count } of data.mix) {
         if (!count) continue;
         const bw = (count / data.total) * w;
-        ctx.fillStyle = kind.hex;
+        ctx.fillStyle = light ? kind.hexLight : kind.hex;
         if (fx) {
             ctx.shadowColor = kind.hex;
             ctx.shadowBlur = 8;
@@ -71,7 +73,7 @@ export function drawMix(cv: HTMLCanvasElement, data: ChartData, fx: boolean) {
         ctx.fillRect(x, h * 0.22, Math.max(1, bw - 2), h * 0.56);
         ctx.shadowBlur = 0;
         if (bw > 36) {
-            ctx.fillStyle = "#071019";
+            ctx.fillStyle = light ? "#ffffff" : "#071019";
             ctx.fillText(`${Math.round((count / data.total) * 100)}%`, x + 5, h * 0.5);
         }
         x += bw;
@@ -79,14 +81,14 @@ export function drawMix(cv: HTMLCanvasElement, data: ChartData, fx: boolean) {
 }
 
 /** Transactions per node, in ring order and node colours. */
-export function drawNodes(cv: HTMLCanvasElement, data: ChartData, fx: boolean) {
+export function drawNodes(cv: HTMLCanvasElement, data: ChartData, fx: boolean, light: boolean) {
     const [ctx, w, h] = prepare(cv);
     const n = data.perNode.length;
     const bw = w / Math.max(1, n);
     const mx = Math.max(1, ...data.perNode.map(p => p.count));
     data.perNode.forEach(({ node, count }, i) => {
         const bh = (count / mx) * (h - 3);
-        ctx.fillStyle = fx ? node.hexFx : node.hex;
+        ctx.fillStyle = fx ? node.hexFx : light ? node.hexLight : node.hex;
         if (fx) {
             ctx.shadowColor = ctx.fillStyle;
             ctx.shadowBlur = 6;

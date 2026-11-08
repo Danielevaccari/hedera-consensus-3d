@@ -19,6 +19,7 @@ export interface HNode {
     /** calm and flashy colours */
     hex: string;
     hexFx: string;
+    hexLight: string;
 }
 
 /** The largest HBAR, token and NFT movement in a transaction, kept raw for later formatting. */

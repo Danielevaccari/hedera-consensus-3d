@@ -2,6 +2,7 @@ import {
     AdditiveBlending,
     BufferAttribute,
     BufferGeometry,
+    Color,
     DynamicDrawUsage,
     InstancedInterleavedBuffer,
     InterleavedBufferAttribute,
@@ -21,6 +22,9 @@ import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js
  */
 export class LineBuf {
     private n = 0;
+    private base = new Color(0, 0, 0);
+    private clamp = false;
+    private gain = 1;
     private pos: Float32Array;
     private col: Float32Array;
     private geo = new BufferGeometry();
@@ -87,13 +91,28 @@ export class LineBuf {
         this.n = 0;
     }
 
+    /**
+     * The colour faint segments fade towards: black on a dark background, the background colour on
+     * a light one. Intensities above 1 (flashy glow) only make sense on black, so light clamps.
+     * `gain` scales intensities: thin pale lines read weaker on white than bright ones on black.
+     */
+    setBase(base: Color, clamp: boolean, gain = 1) {
+        this.base.copy(base);
+        this.clamp = clamp;
+        this.gain = gain;
+    }
+
+    /** Adds a segment whose ends have colours c1 and c2 at intensities k1 and k2 (0 = base). */
     // prettier-ignore
     push(x1: number, y1: number, z1: number, x2: number, y2: number, z2: number,
-         r1: number, g1: number, b1: number, r2: number, g2: number, b2: number) {
+         c1: Color, k1: number, c2: Color, k2: number) {
         if (this.n >= this.cap) return;
-        const o = this.n * 6, p = this.pos, c = this.col;
+        k1 *= this.gain; k2 *= this.gain;
+        if (this.clamp) { k1 = Math.min(1, k1); k2 = Math.min(1, k2); }
+        const o = this.n * 6, p = this.pos, c = this.col, b = this.base;
         p[o] = x1; p[o + 1] = y1; p[o + 2] = z1; p[o + 3] = x2; p[o + 4] = y2; p[o + 5] = z2;
-        c[o] = r1; c[o + 1] = g1; c[o + 2] = b1; c[o + 3] = r2; c[o + 4] = g2; c[o + 5] = b2;
+        c[o] = b.r + (c1.r - b.r) * k1; c[o + 1] = b.g + (c1.g - b.g) * k1; c[o + 2] = b.b + (c1.b - b.b) * k1;
+        c[o + 3] = b.r + (c2.r - b.r) * k2; c[o + 4] = b.g + (c2.g - b.g) * k2; c[o + 5] = b.b + (c2.b - b.b) * k2;
         this.n++;
     }
 

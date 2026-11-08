@@ -5,6 +5,7 @@ import { AbortedError, MirrorClient } from "../api/MirrorClient";
 import { isLowPowerDevice, prefersReducedMotion } from "../lib/device";
 import { readStorage, writeStorage } from "../lib/storage";
 import { Store } from "../lib/store";
+import type { Theme } from "../scene/palette";
 import { SceneView } from "../scene/SceneView";
 import { errorMessage, Feed } from "./Feed";
 import { LiveState } from "./LiveState";
@@ -49,6 +50,9 @@ export class Engine {
     private resizeObserver: ResizeObserver;
     private intersectionObserver: IntersectionObserver;
     private onScreen = true;
+    private theme: Theme;
+    /** the visitor's flashy/calm choice; flashy only shows with the dark theme */
+    private fxPref: boolean;
     private pointer: { x: number; y: number } | null = null;
     private pointerDirty = false;
     private downAt: { x: number; y: number } | null = null;
@@ -68,7 +72,11 @@ export class Engine {
         // a saved choice wins; otherwise flashy only where motion is welcome and the device can take it
         const style = readStorage(STORAGE_KEYS.style);
         const lightDefault = prefersReducedMotion() || isLowPowerDevice();
-        this.scene.setFx(style ? style === "flashy" : !lightDefault);
+        this.fxPref = style ? style === "flashy" : !lightDefault;
+        // the inline script in index.html has already applied the saved theme to <html>
+        this.theme = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+        this.scene.setTheme(this.theme);
+        this.applyFx();
 
         this.ui = new Store(this.snapshot());
         this.resizeObserver = new ResizeObserver(() =>
@@ -153,6 +161,7 @@ export class Engine {
         return {
             paused: this.paused,
             fx: this.scene.fx,
+            theme: this.theme,
             hidePings: this.state.hidePings,
             unrolled: this.scene.unrolled,
             autoRotate: this.scene.autoRotate,
@@ -191,9 +200,24 @@ export class Engine {
     }
 
     toggleFx() {
-        this.scene.setFx(!this.scene.fx);
-        writeStorage(STORAGE_KEYS.style, this.scene.fx ? "flashy" : "calm");
+        this.fxPref = !this.fxPref;
+        writeStorage(STORAGE_KEYS.style, this.fxPref ? "flashy" : "calm");
+        this.applyFx();
         this.publish();
+    }
+
+    toggleTheme() {
+        this.theme = this.theme === "dark" ? "light" : "dark";
+        document.documentElement.dataset.theme = this.theme;
+        writeStorage(STORAGE_KEYS.theme, this.theme);
+        this.scene.setTheme(this.theme);
+        this.applyFx();
+        this.publish();
+    }
+
+    /** Bloom, neon and additive light trails need a dark background. */
+    private applyFx() {
+        this.scene.setFx(this.fxPref && this.theme === "dark");
     }
 
     toggleUnroll() {

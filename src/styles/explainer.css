@@ -66,9 +66,9 @@
     gap: 12px;
 }
 .piece {
-    border-radius: 14px;
+    border-radius: var(--radius);
     padding: 13px;
-    background: linear-gradient(180deg, #0b1224, #080d1b);
+    background: var(--card-bg);
     border: 1px solid var(--line);
     display: flex;
     flex-direction: column;
@@ -80,7 +80,7 @@
     content: "";
     position: absolute;
     inset: -1px;
-    border-radius: 14px;
+    border-radius: var(--radius);
     padding: 1px;
     background: linear-gradient(140deg, var(--acc, var(--cyan)), transparent 45%);
     -webkit-mask:
@@ -116,8 +116,8 @@
     width: 100%;
     height: auto;
     max-height: 118px;
-    border-radius: 10px;
-    background: radial-gradient(circle at 50% 40%, rgba(255, 255, 255, 0.035), transparent 70%);
+    border-radius: var(--radius-sm);
+    background: var(--figure-bg);
     display: block;
 }
 .piece svg text {
@@ -135,7 +135,7 @@ svg .flow {
 .anatomy {
     font-family: var(--mono);
     font-size: 11px;
-    border-radius: 10px;
+    border-radius: var(--radius-sm);
     overflow: hidden;
     border: 1px solid var(--line2);
 }
@@ -164,7 +164,7 @@ svg .flow {
     padding: 16px;
     border-radius: var(--radius);
     border: 1px solid var(--line);
-    background: rgba(255, 255, 255, 0.015);
+    background: var(--subtle);
     color: var(--muted);
     font-size: 12.5px;
     line-height: 1.55;

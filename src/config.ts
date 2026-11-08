@@ -42,14 +42,23 @@ export interface Kind {
     key: string;
     /** legend label */
     label: string;
+    /** on dark backgrounds and as UI badge fill */
     hex: string;
+    /** in the 3D scene on the light background */
+    hexLight: string;
 }
 export const KINDS: Record<KindId, Kind> = {
-    transfer: { id: "transfer", key: "TRANSFER", label: "Transfer", hex: "#5eead4" },
-    hcs: { id: "hcs", key: "HCS MSG", label: "HCS message", hex: "#c4b5fd" },
-    evm: { id: "evm", key: "EVM", label: "EVM / contract", hex: "#fdba74" },
-    token: { id: "token", key: "TOKEN", label: "Token", hex: "#f9a8d4" },
-    other: { id: "other", key: "OTHER", label: "Other", hex: "#93c5fd" },
+    transfer: {
+        id: "transfer",
+        key: "TRANSFER",
+        label: "Transfer",
+        hex: "#5eead4",
+        hexLight: "#0d9488",
+    },
+    hcs: { id: "hcs", key: "HCS MSG", label: "HCS message", hex: "#c4b5fd", hexLight: "#7c3aed" },
+    evm: { id: "evm", key: "EVM", label: "EVM / contract", hex: "#fdba74", hexLight: "#ea580c" },
+    token: { id: "token", key: "TOKEN", label: "Token", hex: "#f9a8d4", hexLight: "#db2777" },
+    other: { id: "other", key: "OTHER", label: "Other", hex: "#93c5fd", hexLight: "#2563eb" },
 };
 export const KIND_LIST = Object.values(KINDS);
 
@@ -63,4 +72,6 @@ export const STORAGE_KEYS = {
     pings: "hedera-tower-pings",
     style: "hedera-tower-style",
     panels: "hedera-tower-panels",
+    /** also read by the inline script in index.html */
+    theme: "hedera-tower-theme",
 } as const;

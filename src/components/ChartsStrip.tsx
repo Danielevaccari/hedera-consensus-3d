@@ -25,13 +25,14 @@ export function ChartsStrip() {
     const nodes = useRef<HTMLCanvasElement>(null);
     const data = ui.charts;
     const fx = ui.options.fx;
+    const light = ui.options.theme === "light";
 
     useEffect(() => {
         if (!data) return;
-        if (rate.current) drawRate(rate.current, data, fx);
-        if (mix.current) drawMix(mix.current, data, fx);
-        if (nodes.current) drawNodes(nodes.current, data, fx);
-    }, [data, fx]);
+        if (rate.current) drawRate(rate.current, data, fx, light);
+        if (mix.current) drawMix(mix.current, data, fx, light);
+        if (nodes.current) drawNodes(nodes.current, data, fx, light);
+    }, [data, fx, light]);
 
     const s = summaries(data);
     return (

@@ -15,7 +15,6 @@ import {
     ShaderMaterial,
     SphereGeometry,
 } from "three";
-import { GOLD } from "./colors";
 
 function createStars() {
     const N = 2600;
@@ -78,7 +77,7 @@ export function createBackdrop() {
     const nowDisc = new Mesh(
         new CircleGeometry(1, 96),
         new MeshBasicMaterial({
-            color: GOLD,
+            color: new Color("#fde047"),
             transparent: true,
             opacity: 0.05,
             side: DoubleSide,

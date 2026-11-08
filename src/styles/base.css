@@ -1,6 +1,45 @@
-/* ---------- design tokens ---------- */
+/*
+ * ---------- design tokens ----------
+ * Light is the default. The theme is set on <html data-theme> by an inline script in index.html
+ * before first paint; keep these selectors and that script in sync.
+ */
 :root {
+    --bg: #eef1f6;
+    --stage-bg: radial-gradient(1200px 700px at 50% 35%, #ffffff 0%, #f1f4f9 55%, #e7ebf2 100%);
+    --panel: rgba(255, 255, 255, 0.86);
+    --panel-solid: #ffffff;
+    --line: rgba(15, 23, 42, 0.11);
+    --line2: rgba(15, 23, 42, 0.2);
+    --text: #0f172a;
+    --muted: #526075;
+    --dim: #8590a3;
+    --cyan: #0891b2;
+    --violet: #7c3aed;
+    --pink: #db2777;
+    --green: #15803d;
+    --orange: #ea580c;
+    --blue: #2563eb;
+    --gold: #b45309;
+    --red: #dc2626;
+    --subtle: rgba(15, 23, 42, 0.035);
+    --btn-bg: rgba(15, 23, 42, 0.03);
+    --btn-hover: rgba(15, 23, 42, 0.07);
+    --btn-hover-line: rgba(15, 23, 42, 0.35);
+    --shadow: 0 2px 10px rgba(15, 23, 42, 0.07);
+    --gold-text: #92400e;
+    --on-accent: #ffffff;
+    --card-bg: #ffffff;
+    --figure-bg: rgba(15, 23, 42, 0.03);
+    --radius: 4px;
+    --radius-sm: 2px;
+    --gap: 8px;
+    --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+    --sans: "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+    color-scheme: light;
+}
+:root[data-theme="dark"] {
     --bg: #03050b;
+    --stage-bg: radial-gradient(1200px 700px at 50% 35%, #0d1630 0%, #060a16 55%, #03050b 100%);
     --panel: rgba(9, 14, 28, 0.74);
     --panel-solid: #0b1122;
     --line: rgba(130, 165, 255, 0.14);
@@ -16,10 +55,15 @@
     --blue: #60a5fa;
     --gold: #fde047;
     --red: #f87171;
-    --radius: 12px;
-    --gap: 8px;
-    --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
-    --sans: "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --subtle: rgba(255, 255, 255, 0.022);
+    --btn-bg: rgba(255, 255, 255, 0.04);
+    --btn-hover: rgba(255, 255, 255, 0.08);
+    --btn-hover-line: rgba(160, 190, 255, 0.45);
+    --shadow: 0 10px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    --gold-text: #fff7c2;
+    --on-accent: #03150a;
+    --card-bg: linear-gradient(180deg, #0b1224, #080d1b);
+    --figure-bg: rgba(255, 255, 255, 0.035);
     color-scheme: dark;
 }
 
@@ -53,19 +97,17 @@ code {
     border-radius: var(--radius);
     backdrop-filter: blur(14px) saturate(140%);
     -webkit-backdrop-filter: blur(14px) saturate(140%);
-    box-shadow:
-        0 10px 40px rgba(0, 0, 0, 0.45),
-        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    box-shadow: var(--shadow);
 }
 
 /* ---------- buttons ---------- */
 .btn {
     appearance: none;
     border: 1px solid var(--line2);
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--btn-bg);
     color: var(--text);
     padding: 5px 10px;
-    border-radius: 8px;
+    border-radius: var(--radius-sm);
     font-size: 12px;
     font-weight: 500;
     line-height: 1.3;
@@ -80,8 +122,8 @@ code {
         transform 0.1s;
 }
 .btn:hover {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(160, 190, 255, 0.45);
+    background: var(--btn-hover);
+    border-color: var(--btn-hover-line);
 }
 .btn:active {
     transform: translateY(1px);
@@ -98,7 +140,7 @@ code {
 .btn.gold {
     background: rgba(253, 224, 71, 0.12);
     border-color: rgba(253, 224, 71, 0.5);
-    color: #fff7c2;
+    color: var(--gold-text);
 }
 .btn.on {
     background: rgba(74, 222, 128, 0.13);
@@ -109,7 +151,7 @@ code {
 .pill {
     display: inline-block;
     padding: 1px 7px;
-    border-radius: 20px;
+    border-radius: var(--radius-sm);
     font-size: 10.5px;
     font-weight: 600;
     font-family: var(--sans);
@@ -127,7 +169,7 @@ code {
     font-weight: 700;
     padding: 1px 5px;
     margin-left: 4px;
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
     background: rgba(253, 224, 71, 0.16);
     color: var(--gold);
     letter-spacing: 0.06em;

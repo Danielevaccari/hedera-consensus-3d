@@ -28,14 +28,13 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
-import { BLOCK_HEX, CFG, FADE } from "../config";
+import { CFG, FADE } from "../config";
 import type { LiveState } from "../engine/LiveState";
 import type { Market } from "../engine/Market";
 import type { Hover, Tx } from "../engine/types";
 import { isLowPowerDevice } from "../lib/device";
 import { fmtInt, trunc } from "../lib/format";
 import { createBackdrop } from "./backdrop";
-import { BLOCK_COLORS, GOLD, kindColor, RED, WHITE } from "./colors";
 import {
     bezier,
     disposeSprite,
@@ -45,8 +44,8 @@ import {
     type TextSprite,
 } from "./helpers";
 import { LineBuf } from "./LineBuf";
+import { PALETTES, type Palette, type Theme } from "./palette";
 
-const CALM_BG = new Color(0x050913);
 const TX_CAP = 8000;
 const DOT_CAP = 3000;
 const SHOCK_CAP = 600;
@@ -61,9 +60,12 @@ interface NodeVisual {
 }
 
 export class SceneView {
-    fx = true;
+    /** flashy effects; only ever on with the dark theme */
+    fx = false;
+    private pal: Palette = PALETTES.light;
     private renderer: WebGLRenderer;
     private scene = new Scene();
+    private fog = new Fog(0xffffff, 55, 120);
     private camera = new PerspectiveCamera(42, 1, 0.1, 600);
     private controls: OrbitControls;
     private composer: EffectComposer;
@@ -79,20 +81,14 @@ export class SceneView {
     private trailLines;
     private baseLines;
     private lines: LineBuf[];
-    private trackStar = new Mesh(
-        new OctahedronGeometry(0.4, 0),
-        new MeshBasicMaterial({ color: GOLD }),
-    );
-    private trackHalo = new Mesh(
-        new TorusGeometry(1, 0.04, 8, 48),
-        new MeshBasicMaterial({ color: GOLD }),
-    );
+    private trackStar = new Mesh(new OctahedronGeometry(0.4, 0), new MeshBasicMaterial());
+    private trackHalo = new Mesh(new TorusGeometry(1, 0.04, 8, 48), new MeshBasicMaterial());
 
     // ---- nodes and labels ----
     private nodeGeo = new SphereGeometry(0.5, 48, 32);
     private nodeGlowGeo = new SphereGeometry(1, 20, 14);
     private nodeVisuals: NodeVisual[] = [];
-    private nowLabel: TextSprite;
+    private nowLabel: TextSprite | null = null;
     private blockLabels = new Map<number, TextSprite>();
 
     // ---- layout: cylinder <-> flat wall morph ----
@@ -130,8 +126,7 @@ export class SceneView {
         this.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
 
         const scene = this.scene;
-        scene.background = CALM_BG;
-        scene.fog = new Fog(0x050812, 55, 120);
+        scene.fog = this.fog;
         this.camera.position.set(0, 7, 64);
 
         const controls = (this.controls = new OrbitControls(this.camera, canvas));
@@ -170,21 +165,36 @@ export class SceneView {
         this.trackStar.visible = false;
         this.trackHalo.visible = false;
         scene.add(this.trackStar, this.trackHalo);
-
-        this.nowLabel = textSprite(
-            "CONSENSUS CLOCK ▸ older below",
-            "#fde047",
-            30,
-            500,
-            this.anisotropy,
-        );
-        sizeSprite(this.nowLabel, 0.75);
-        scene.add(this.nowLabel);
+        this.setTheme("light");
     }
 
     // =================================================================
     // Setup and options
     // =================================================================
+
+    /** Switches the scene's colours; labels are redrawn in the new palette. */
+    setTheme(theme: Theme) {
+        const pal = (this.pal = PALETTES[theme]);
+        this.fog.color.copy(pal.bg);
+        for (const lb of this.lines)
+            lb.setBase(pal.base, theme === "light", theme === "light" ? 1.7 : 1);
+        this.trackStar.material.color.copy(pal.gold);
+        this.trackHalo.material.color.copy(pal.gold);
+
+        if (this.nowLabel) disposeSprite(this.scene, this.nowLabel);
+        this.nowLabel = textSprite(
+            "CONSENSUS CLOCK ▸ older below",
+            pal.goldHex,
+            30,
+            500,
+            this.anisotropy,
+        );
+        sizeSprite(this.nowLabel, 0.75);
+        this.scene.add(this.nowLabel);
+        this.removeBlockLabels([...this.blockLabels.keys()]); // recreated on demand
+        if (this.nodeVisuals.length) this.buildNodes();
+        else this.setFx(this.fx);
+    }
 
     /** (Re)creates the node spheres and labels; call once the nodes are known. */
     buildNodes() {
@@ -196,8 +206,10 @@ export class SceneView {
             disposeSprite(this.scene, v.host);
         }
         const nodes = this.state.nodes;
+        const pal = this.pal;
         this.nodeVisuals = nodes.map(nd => {
-            const calm = new Color(nd.hex);
+            const hex = pal.nodeHex(nd);
+            const calm = new Color(hex);
             const core = new Mesh(this.nodeGeo, new MeshBasicMaterial({ color: calm, fog: false }));
             const glow = new Mesh(
                 this.nodeGlowGeo,
@@ -210,9 +222,9 @@ export class SceneView {
                     fog: false,
                 }),
             );
-            const acct = textSprite(nd.acct, nd.hex, 28, 600, this.anisotropy);
+            const acct = textSprite(nd.acct, hex, 28, 600, this.anisotropy);
             sizeSprite(acct, 0.62);
-            const host = textSprite(trunc(nd.host, 14), "#9fb0d6", 26, 500, this.anisotropy);
+            const host = textSprite(trunc(nd.host, 14), pal.hostLabel, 26, 500, this.anisotropy);
             sizeSprite(host, 0.42);
             this.scene.add(core, glow, acct, host);
             return { core, glow, acct, host, calm, fx: new Color(nd.hexFx) };
@@ -226,7 +238,7 @@ export class SceneView {
     setFx(fx: boolean) {
         this.fx = fx;
         this.backdrop.group.visible = fx;
-        this.scene.background = fx ? null : CALM_BG;
+        this.scene.background = fx ? null : this.pal.bg;
         for (const lb of this.lines) lb.setFx(fx);
         for (const v of this.nodeVisuals) {
             const c = fx ? v.fx : v.calm;
@@ -382,29 +394,35 @@ export class SceneView {
             const c1 = this.nodeColor(i);
             const c2 = this.nodeColor(j);
             if (!(j === 0 && m > 0.5))
-                // prettier-ignore
-                baseLines.push(colX[i], NY, colZ[i], colX[j], NY, colZ[j],
-                    c1.r * 0.35, c1.g * 0.35, c1.b * 0.35, c2.r * 0.35, c2.g * 0.35, c2.b * 0.35);
-            // prettier-ignore
-            baseLines.push(colX[i], NY - 0.5, colZ[i], colX[i], bottom, colZ[i],
-                c1.r * 0.13, c1.g * 0.13, c1.b * 0.13, 0, 0, 0);
+                baseLines.push(colX[i], NY, colZ[i], colX[j], NY, colZ[j], c1, 0.35, c2, 0.35);
+            baseLines.push(colX[i], NY - 0.5, colZ[i], colX[i], bottom, colZ[i], c1, 0.13, c1, 0);
         }
         baseLines.flush();
     }
 
     private txColor(tx: Tx, out: Color, fade: number, born: number) {
+        const pal = this.pal;
         out.copy(
-            tx === this.state.tracked ? GOLD : tx.result !== "SUCCESS" ? RED : kindColor(tx.kind),
+            tx === this.state.tracked
+                ? pal.gold
+                : tx.result !== "SUCCESS"
+                  ? pal.red
+                  : pal.kind(tx.kind),
         );
-        if (this.fx && born < 0.6) out.lerp(WHITE, (1 - born / 0.6) * 0.6);
-        return out.multiplyScalar(fade * (this.fx ? 1.1 : 1));
+        if (this.fx) {
+            if (born < 0.6) out.lerp(pal.white, (1 - born / 0.6) * 0.6);
+            return out.multiplyScalar(fade * 1.1);
+        }
+        // fade towards the background (black on dark, the light background on light)
+        return out.lerp(pal.base, 1 - fade);
     }
 
     /** Transactions flying in, then resting at their consensus time, linked in consensus order. */
     private updateTransactions(m: number) {
-        const { state, market, fx, colX, colZ, bz, tmpM, tmpC, tmpC2, dummy } = this;
+        const { state, market, fx, pal, colX, colZ, bz, tmpM, tmpC, tmpC2, dummy } = this;
         const { txs, tracked, displayRel, realT } = state;
         const { txMesh, dotMesh, shockMesh, threadLines, trailLines } = this;
+        const GOLD = pal.gold;
         const NY = CFG.NODE_Y;
         const win = CFG.window;
         const visible = this.visible;
@@ -437,7 +455,7 @@ export class SceneView {
                 const cx = (sx + ex) / 2;
                 const cy = Math.max(sy, NY) + 2;
                 const cz = (sz + ez) / 2;
-                const col = tx === tracked ? GOLD : kindColor(tx.kind);
+                const col = tx === tracked ? GOLD : pal.kind(tx.kind);
                 const u0 = Math.max(0, uu - (fx ? 0.55 : 0.35));
                 const tk = fx ? 1 : 0.6;
                 let px = 0;
@@ -448,9 +466,7 @@ export class SceneView {
                     if (s > 0) {
                         const k1 = ((s - 1) / 6) * tk;
                         const k2 = (s / 6) * tk;
-                        // prettier-ignore
-                        trailLines.push(px, py, pz, bz[0], bz[1], bz[2],
-                            col.r * k1, col.g * k1, col.b * k1, col.r * k2, col.g * k2, col.b * k2);
+                        trailLines.push(px, py, pz, bz[0], bz[1], bz[2], col, k1, col, k2);
                     }
                     px = bz[0];
                     py = bz[1];
@@ -494,7 +510,7 @@ export class SceneView {
             // flashy: a shockwave ring and a burst of sparks at the node when a transaction lands
             if (fx && born < 0.8) {
                 const q = born / 0.8;
-                const col = tx === tracked ? GOLD : kindColor(tx.kind);
+                const col = tx === tracked ? GOLD : pal.kind(tx.kind);
                 if (si < SHOCK_CAP - 10) {
                     dummy.position.set(x, NY, z);
                     dummy.rotation.set(Math.PI / 2, 0, 0);
@@ -521,9 +537,7 @@ export class SceneView {
             if (fx && tx.whaleAt !== undefined && realT - tx.whaleAt < 4) {
                 const wb = realT - tx.whaleAt;
                 const kf = 1.2 * (1 - wb / 4);
-                // prettier-ignore
-                trailLines.push(x, NY + 9, z, x, y, z,
-                    GOLD.r * kf * 0.2, GOLD.g * kf * 0.2, GOLD.b * kf * 0.2, GOLD.r * kf, GOLD.g * kf, GOLD.b * kf);
+                trailLines.push(x, NY + 9, z, x, y, z, GOLD, kf * 0.2, GOLD, kf);
                 if (si < SHOCK_CAP - 10 && wb < 1.6) {
                     const q = wb / 1.6;
                     dummy.position.set(x, NY, z);
@@ -541,11 +555,9 @@ export class SceneView {
             if (prev) {
                 const hot = prev === tracked || tx === tracked;
                 const kk = (hot ? 0.9 : fx ? 0.32 : 0.42) * fade;
-                const c1 = hot ? GOLD : kindColor(tx.kind);
-                const c2 = hot ? GOLD : kindColor(prev.kind);
-                // prettier-ignore
-                threadLines.push(x, y, z, prev.px, prev.py, prev.pz,
-                    c1.r * kk, c1.g * kk, c1.b * kk, c2.r * kk, c2.g * kk, c2.b * kk);
+                const c1 = hot ? GOLD : pal.kind(tx.kind);
+                const c2 = hot ? GOLD : pal.kind(prev.kind);
+                threadLines.push(x, y, z, prev.px, prev.py, prev.pz, c1, kk, c2, kk);
             }
             prev = tx;
         }
@@ -572,7 +584,8 @@ export class SceneView {
         let s = this.blockLabels.get(num);
         if (!s) {
             const text = `BLOCK ${fmtInt(num)} ▾ ${count} tx`;
-            s = textSprite(text, BLOCK_HEX[num % BLOCK_HEX.length], 30, 500, this.anisotropy);
+            const hex = this.pal.blockHex[num % this.pal.blockHex.length];
+            s = textSprite(text, hex, 30, 500, this.anisotropy);
             sizeSprite(s, 0.6);
             this.scene.add(s);
             this.blockLabels.set(num, s);
@@ -589,7 +602,7 @@ export class SceneView {
 
     /** A ring at each record file's closing timestamp; every 5th block is labelled. */
     private updateBlocks(m: number) {
-        const { state, fx, colX, colZ, tmpC, ringLines } = this;
+        const { state, fx, pal, colX, colZ, tmpC, ringLines } = this;
         const n = state.nodes.length;
         const win = CFG.window;
         ringLines.reset();
@@ -600,8 +613,8 @@ export class SceneView {
             const y = -age * CFG.VS;
             const flash =
                 b.sealedAt !== null ? Math.max(0, 1 - (state.realT - b.sealedAt) / 1.4) : 0;
-            tmpC.copy(BLOCK_COLORS[b.num % BLOCK_COLORS.length]);
-            if (fx) tmpC.lerp(WHITE, flash * 0.7);
+            tmpC.copy(pal.block[b.num % pal.block.length]);
+            if (fx) tmpC.lerp(pal.white, flash * 0.7);
             const major = b.num % 5 === 0;
             const kk =
                 (major ? (fx ? 0.2 : 0.3) : fx ? 0.06 : 0.13) *
@@ -616,16 +629,14 @@ export class SceneView {
                     const a0 = (s2 / 64) * Math.PI * 2;
                     const a1 = ((s2 + 1) / 64) * Math.PI * 2;
                     // prettier-ignore
-                    ringLines.push(Math.cos(a0) * rr, y, Math.sin(a0) * rr, Math.cos(a1) * rr, y, Math.sin(a1) * rr,
-                        tmpC.r * kf, tmpC.g * kf, tmpC.b * kf, tmpC.r * kf, tmpC.g * kf, tmpC.b * kf);
+                    ringLines.push(Math.cos(a0) * rr, y, Math.sin(a0) * rr,
+                        Math.cos(a1) * rr, y, Math.sin(a1) * rr, tmpC, kf, tmpC, kf);
                 }
             }
             for (let i = 0; i < n; i++) {
                 const j = (i + 1) % n;
                 if (j === 0 && m > 0.5) break;
-                // prettier-ignore
-                ringLines.push(colX[i], y, colZ[i], colX[j], y, colZ[j],
-                    tmpC.r * kk, tmpC.g * kk, tmpC.b * kk, tmpC.r * kk, tmpC.g * kk, tmpC.b * kk);
+                ringLines.push(colX[i], y, colZ[i], colX[j], y, colZ[j], tmpC, kk, tmpC, kk);
             }
             if (!major) continue;
             const lab = this.blockLabel(b.num, b.count);
@@ -641,14 +652,12 @@ export class SceneView {
     /** The top of the tower is "now" on the replayed timeline. Flushes the ring batch. */
     private updateClock(m: number, dt: number) {
         const { state, fx, colX, colZ, ringLines } = this;
+        const GOLD = this.pal.gold;
         const n = state.nodes.length;
-        const gk = 0.6;
         for (let i = 0; i < n; i++) {
             const j = (i + 1) % n;
             if (j === 0 && m > 0.5) break;
-            // prettier-ignore
-            ringLines.push(colX[i], 0, colZ[i], colX[j], 0, colZ[j],
-                GOLD.r * gk, GOLD.g * gk, GOLD.b * gk, GOLD.r * gk, GOLD.g * gk, GOLD.b * gk);
+            ringLines.push(colX[i], 0, colZ[i], colX[j], 0, colZ[j], GOLD, 0.6, GOLD, 0.6);
         }
         // flashy: a gold radar sweep circles the consensus clock, over a faint glowing disc
         if (fx && m < 0.5) {
@@ -657,7 +666,7 @@ export class SceneView {
                 const kf = 0.9 * (1 - s2 / 16);
                 // prettier-ignore
                 ringLines.push(0, 0, 0, Math.cos(a) * CFG.R, 0, Math.sin(a) * CFG.R,
-                    GOLD.r * kf * 0.15, GOLD.g * kf * 0.15, GOLD.b * kf * 0.15, GOLD.r * kf, GOLD.g * kf, GOLD.b * kf);
+                    GOLD, kf * 0.15, GOLD, kf);
             }
         }
         const disc = this.backdrop.nowDisc;
@@ -666,8 +675,9 @@ export class SceneView {
         disc.material.opacity = 0.05 * (1 - m);
         if (fx) this.backdrop.tick(state.realT, dt);
         ringLines.flush();
-        if (m < 0.5) this.placeLabelOutside(this.nowLabel, 0, -0.75, CFG.R + 4.5);
-        else this.nowLabel.position.set(colX[n - 1] + 4.6, 0, 0.4);
+        const label = this.nowLabel!;
+        if (m < 0.5) this.placeLabelOutside(label, 0, -0.75, CFG.R + 4.5);
+        else label.position.set(colX[n - 1] + 4.6, 0, 0.4);
     }
 
     private updateTrackMarker() {

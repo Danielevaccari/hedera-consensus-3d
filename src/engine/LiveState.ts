@@ -86,6 +86,7 @@ export class LiveState {
                 count: 0,
                 hex: `hsl(${hue},55%,64%)`,
                 hexFx: `hsl(${hue},92%,62%)`,
+                hexLight: `hsl(${hue},62%,44%)`,
             };
         });
         // stake unknown: equal weights
