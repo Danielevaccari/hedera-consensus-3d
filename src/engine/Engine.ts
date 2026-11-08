@@ -2,6 +2,7 @@
 // what the React UI needs through two stores: a UI snapshot (~5 Hz) and the hover target.
 import { STORAGE_KEYS, UI_INTERVAL } from "../config";
 import { AbortedError, MirrorClient } from "../api/MirrorClient";
+import { isLowPowerDevice, prefersReducedMotion } from "../lib/device";
 import { readStorage, writeStorage } from "../lib/storage";
 import { Store } from "../lib/store";
 import { SceneView } from "../scene/SceneView";
@@ -46,6 +47,8 @@ export class Engine {
     private uiTimer = 0;
     private disposed = false;
     private resizeObserver: ResizeObserver;
+    private intersectionObserver: IntersectionObserver;
+    private onScreen = true;
     private pointer: { x: number; y: number } | null = null;
     private pointerDirty = false;
     private downAt: { x: number; y: number } | null = null;
@@ -62,14 +65,21 @@ export class Engine {
 
         const pings = readStorage(STORAGE_KEYS.pings);
         if (pings) this.state.hidePings = pings === "hidden";
+        // a saved choice wins; otherwise flashy only where motion is welcome and the device can take it
         const style = readStorage(STORAGE_KEYS.style);
-        this.scene.setFx(style ? style === "flashy" : true);
+        const lightDefault = prefersReducedMotion() || isLowPowerDevice();
+        this.scene.setFx(style ? style === "flashy" : !lightDefault);
 
         this.ui = new Store(this.snapshot());
         this.resizeObserver = new ResizeObserver(() =>
             this.scene.resize(viewport.clientWidth, viewport.clientHeight),
         );
         this.resizeObserver.observe(viewport);
+        // stop drawing while the 3D view is scrolled out of sight (the data keeps updating)
+        this.intersectionObserver = new IntersectionObserver(([entry]) => {
+            this.onScreen = entry.isIntersecting;
+        });
+        this.intersectionObserver.observe(viewport);
         this.bindPointer();
         this.bindFullscreen();
         void this.start();
@@ -110,6 +120,7 @@ export class Engine {
         this.feed.stop();
         this.client.abort();
         this.resizeObserver.disconnect();
+        this.intersectionObserver.disconnect();
         for (const c of this.cleanups) c();
         this.scene.dispose();
     }
@@ -120,8 +131,10 @@ export class Engine {
         const state = this.state;
         state.realT += dt;
         if (!this.paused) state.advance(dt);
-        this.scene.frame(dt);
-        this.updateHover();
+        if (this.onScreen) {
+            this.scene.frame(dt);
+            this.updateHover();
+        }
         this.uiTimer += dt;
         if (this.uiTimer > UI_INTERVAL) {
             this.uiTimer = 0;

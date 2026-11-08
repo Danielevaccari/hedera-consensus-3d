@@ -32,6 +32,7 @@ import { BLOCK_HEX, CFG, FADE } from "../config";
 import type { LiveState } from "../engine/LiveState";
 import type { Market } from "../engine/Market";
 import type { Hover, Tx } from "../engine/types";
+import { isLowPowerDevice } from "../lib/device";
 import { fmtInt, trunc } from "../lib/format";
 import { createBackdrop } from "./backdrop";
 import { BLOCK_COLORS, GOLD, kindColor, RED, WHITE } from "./colors";
@@ -121,8 +122,11 @@ export class SceneView {
             antialias: true,
             powerPreference: "high-performance",
         });
-        // render at least 1.5x so thin lines and labels stay sharp on standard-DPI screens too
-        this.renderer.setPixelRatio(Math.min(Math.max(window.devicePixelRatio, 1.5), 3));
+        // render at least 1.5x so thin lines and labels stay sharp on standard-DPI screens too;
+        // low-power devices stay at 1.5x at most, since fill rate is what drains phones
+        const dpr = window.devicePixelRatio;
+        const ratio = isLowPowerDevice() ? Math.min(dpr, 1.5) : Math.min(Math.max(dpr, 1.5), 3);
+        this.renderer.setPixelRatio(ratio);
         this.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
 
         const scene = this.scene;
