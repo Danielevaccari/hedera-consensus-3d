@@ -23,8 +23,8 @@ const EXTRA: Record<ViewId, Entry[]> = {
         { cls: "stake", label: "Node size = stake" },
     ],
     globe: [
-        { cls: "thread", label: "Consensus order arc (60 s)" },
-        { cls: "spike", label: "Spike = tx received (2 min)" },
+        { cls: "thread", label: "Consensus order arc (brief)" },
+        { cls: "spike", label: "Spike = recent tx received" },
         { cls: "stake", label: "Dot size = stake" },
     ],
 };

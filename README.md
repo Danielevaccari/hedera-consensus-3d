@@ -17,8 +17,8 @@ about gossip, events, rounds and witnesses, virtual voting, consensus timestamps
 
 ## Features
 
-- Light theme by default, dark theme one click away (remembered, applied before first paint)
-- Calm and flashy styles in both themes: bloom and starfield on dark, pastel washes and coloured
+- Dark and flashy by default; a light theme and a calm style are one click away (remembered,
+  applied before first paint). Flashy works in both themes: bloom and starfield on dark, pastel washes and coloured
   shadows on light
 - Live tower of the last 2 minutes of mainnet transactions, blocks (record files) and the
   replayed consensus clock; unroll it into a flat wall

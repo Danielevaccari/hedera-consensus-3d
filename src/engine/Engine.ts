@@ -86,7 +86,7 @@ export class Engine {
 
         const pings = readStorage(STORAGE_KEYS.pings);
         if (pings) this.state.hidePings = pings === "hidden";
-        this.fxPref = readStorage(STORAGE_KEYS.style) === "flashy"; // calm unless chosen
+        this.fxPref = readStorage(STORAGE_KEYS.style) !== "calm"; // flashy unless the visitor chose calm
         this.charts = readStorage(STORAGE_KEYS.charts) === "on";
         // the inline script in index.html has already applied the saved theme to <html>
         this.theme = document.documentElement.dataset.theme === "dark" ? "dark" : "light";

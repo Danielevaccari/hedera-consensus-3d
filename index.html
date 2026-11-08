@@ -7,16 +7,18 @@
         <meta
             name="description"
             content="Live 3D view of Hedera mainnet: the real consensus nodes, their stake, and every transaction placed at its real consensus timestamp, streamed from the public mirror node." />
-        <meta name="theme-color" content="#eef1f6" />
+        <meta name="theme-color" content="#03050b" />
         <script>
-            // Apply the saved theme before first paint so dark-mode visitors see no light flash.
-            // Light is the default. Keep the key in sync with STORAGE_KEYS.theme in src/config.ts.
+            // Apply the theme before first paint so there is no flash of the wrong one.
+            // Dark is the default; only a saved "light" choice overrides it. Keep the key in sync
+            // with STORAGE_KEYS.theme in src/config.ts.
+            var theme = "dark";
             try {
-                if (localStorage.getItem("hedera-tower-theme") === "dark")
-                    document.documentElement.dataset.theme = "dark";
+                if (localStorage.getItem("hedera-tower-theme") === "light") theme = "light";
             } catch {
-                /* storage blocked: stay light */
+                /* storage blocked: use the default */
             }
+            document.documentElement.dataset.theme = theme;
         </script>
         <link rel="canonical" href="https://hedera-3d.netlify.app/" />
         <!-- link previews (LinkedIn, Slack, X, ...) -->

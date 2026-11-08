@@ -4,6 +4,14 @@ export const MIRROR_HOST = "https://mainnet-public.mirrornode.hedera.com";
 export const MIRROR_API = `${MIRROR_HOST}/api/v1`;
 export const HASHSCAN_TX = "https://hashscan.io/mainnet/transaction/";
 
+/** The globe shows transactions only briefly: they appear, then fade (seconds). */
+export const GLOBE = {
+    /** how long a consensus-order arc stays visible */
+    ARC_LIFE: 6,
+    /** spikes count transactions received over this recent window */
+    SPIKE_WINDOW: 15,
+} as const;
+
 /** Tower geometry and timing. */
 export const CFG = {
     /** seconds of history kept in the tower */

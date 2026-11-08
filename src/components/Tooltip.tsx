@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import type { HNode, Tx } from "../engine/types";
 import { useEngine } from "../engine/EngineContext";
 import { useStore } from "../hooks/useStore";
+import { GLOBE } from "../config";
 import { fmtHbar, fmtInt, fmtStake, fmtTs, fmtTsNs, fmtUsd } from "../lib/format";
 
 function NodeContent({ nd }: { nd: HNode }) {
@@ -30,7 +31,8 @@ function NodeContent({ nd }: { nd: HNode }) {
                 </dd>
                 <dt>{globe ? "tx received" : "tx in view"}</dt>
                 <dd>
-                    {nd.count} {globe ? "in the last 2 min" : "submitted via this node"}
+                    {nd.count}{" "}
+                    {globe ? `in the last ${GLOBE.SPIKE_WINDOW} s` : "submitted via this node"}
                 </dd>
             </dl>
             <div className="note">

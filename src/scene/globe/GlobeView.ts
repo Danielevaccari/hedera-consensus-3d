@@ -31,7 +31,7 @@ import {
 } from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import type { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
-import { CFG } from "../../config";
+import { CFG, GLOBE } from "../../config";
 import type { LiveState } from "../../engine/LiveState";
 import type { Hover, HNode, Tx } from "../../engine/types";
 import { trunc } from "../../lib/format";
@@ -44,8 +44,6 @@ import type { View3D } from "../View3D";
 import { coordsFor, latLonToUnit } from "./geo";
 import { buildLandPoints } from "./land";
 
-/** seconds an order arc stays visible */
-const ARC_LIFE = 60;
 const R = 10;
 const UP = new Vector3(0, 1, 0);
 const Z = new Vector3(0, 0, 1);
@@ -140,19 +138,21 @@ export class GlobeView implements View3D {
         key.position.set(-6, 8, 10); // follows the camera, so the lit side always faces the viewer
         this.camera.add(key);
 
-        // the earth: matte sphere, thin atmosphere rim, dotted land
+        // the earth: matte sphere, a soft atmosphere that fades out, dotted land
         scene.add(new Mesh(new SphereGeometry(R, 96, 64), this.earthMat));
         this.rimMat = new ShaderMaterial({
-            uniforms: { c: { value: new Color("#60a5fa") } },
+            uniforms: { c: { value: new Color("#60a5fa") }, strength: { value: 0.3 } },
             vertexShader:
                 "varying vec3 vN; varying vec3 vV; void main(){ vec4 mv = modelViewMatrix * vec4(position,1.0); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }",
             fragmentShader:
-                "uniform vec3 c; varying vec3 vN; varying vec3 vV; void main(){ float f = pow(1.0 - abs(dot(vN, vV)), 3.0); gl_FragColor = vec4(c, f * 0.3); }",
+                // d = how head-on this point of the shell is seen: it is largest next to the globe and falls to 0 at the
+                // shell's outer edge, so the glow fades out smoothly instead of ending in a hard ring
+                "uniform vec3 c; uniform float strength; varying vec3 vN; varying vec3 vV; void main(){ float d = abs(dot(vN, vV)); float f = pow(clamp(d / 0.39, 0.0, 1.0), 2.4); gl_FragColor = vec4(c, f * strength); }",
             transparent: true,
             side: BackSide,
             depthWrite: false,
         });
-        scene.add(new Mesh(new SphereGeometry(R * 1.045, 96, 64), this.rimMat));
+        scene.add(new Mesh(new SphereGeometry(R * 1.08, 96, 64), this.rimMat));
 
         const spike = new CylinderGeometry(1, 1, 1, 10);
         spike.translate(0, 0.5, 0);
@@ -211,6 +211,7 @@ export class GlobeView implements View3D {
         this.earthMat.specular.set(light ? 0x8896ad : 0x111827);
         this.landMat.color.set(light ? 0x56657f : 0x5d73a3);
         this.rimMat.uniforms.c.value.set(light ? "#3b82f6" : "#60a5fa");
+        this.rimMat.uniforms.strength.value = light ? 0.14 : 0.16;
         this.trackStar.material.color.copy(pal.gold);
         this.trackRing.material.color.copy(pal.gold);
         for (const lb of this.lines) lb.setBase(pal.base, light, light ? 2.4 : 1);
@@ -336,17 +337,17 @@ export class GlobeView implements View3D {
         this.frameNo++;
         const { state, pal, fx, tmpM, tmpC, tmpC2, tmpS } = this;
         const { txs, tracked, displayRel, realT } = state;
-        const win = CFG.window;
 
-        // ---- per-node counts over the history window drive the spike heights ----
+        // ---- per-node counts over a short recent window drive the spike heights ----
         for (const g of this.gnodes) g.nd.count = 0;
         for (let k = txs.length - 1; k >= 0; k--) {
             const tx = txs[k];
             if (!tx.landed) continue;
-            if (displayRel - tx.ct > win) break;
+            if (displayRel - tx.ct > GLOBE.SPIKE_WINDOW) break;
             if (tx.node && state.shown(tx)) tx.node.count++;
         }
-        let maxCount = 1;
+        // a floor keeps a couple of stray transactions from towering over a quiet globe
+        let maxCount = 6;
         for (const g of this.gnodes) if (g.nd.count > maxCount) maxCount = g.nd.count;
 
         // ---- node markers (size = stake) and spikes (height = tx received) ----
@@ -432,13 +433,13 @@ export class GlobeView implements View3D {
         for (let k = txs.length - 1; k >= 0; k--) {
             const tx = txs[k];
             if (!tx.landed || !tx.node || !state.shown(tx) || !this.byNode.has(tx.node)) continue;
-            if (newer && displayRel - newer.ct > ARC_LIFE) break;
+            if (newer && displayRel - newer.ct > GLOBE.ARC_LIFE) break;
             if (newer && newer.node !== tx.node) {
                 const born = realT - newer.landedReal;
                 const u = Math.min(1, born / 0.7);
-                const fade = Math.max(0, 1 - (displayRel - newer.ct) / ARC_LIFE);
+                const fade = Math.max(0, 1 - (displayRel - newer.ct) / GLOBE.ARC_LIFE);
                 const hot = newer === tracked || tx === tracked;
-                const kk = hot ? 1 : 0.2 + 0.5 * fade * fade;
+                const kk = (hot ? 1 : 0.85) * fade; // fades all the way out
                 const c1 = hot ? pal.gold : pal.kind(tx.kind);
                 const c2 = hot ? pal.gold : pal.kind(newer.kind);
                 const end = this.pushArc(
