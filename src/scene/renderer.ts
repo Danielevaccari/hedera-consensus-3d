@@ -28,14 +28,27 @@ export function createRenderer(canvas: HTMLCanvasElement) {
     return renderer;
 }
 
+export interface BloomOptions {
+    strength: number;
+    radius: number;
+    /** only parts brighter than this glow */
+    threshold: number;
+}
+
 /** Bloom chain for flashy mode on dark backgrounds (glow only reads as light on dark). */
-export function createComposer(renderer: WebGLRenderer, scene: Scene, camera: PerspectiveCamera) {
+export function createComposer(
+    renderer: WebGLRenderer,
+    scene: Scene,
+    camera: PerspectiveCamera,
+    bloom: BloomOptions = { strength: 0.9, radius: 0.3, threshold: 0.55 },
+) {
     // multisampled target, so edges stay antialiased under the glow
     const target = new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: 4 });
     const composer = new EffectComposer(renderer, target);
     composer.addPass(new RenderPass(scene, camera));
-    // threshold 0.55: only bright parts glow (nodes, landing flashes, sparks); lines stay crisp
-    composer.addPass(new UnrealBloomPass(new Vector2(256, 256), 0.9, 0.3, 0.55));
+    composer.addPass(
+        new UnrealBloomPass(new Vector2(256, 256), bloom.strength, bloom.radius, bloom.threshold),
+    );
     composer.addPass(new OutputPass());
     return composer;
 }

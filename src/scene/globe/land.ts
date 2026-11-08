@@ -1,18 +1,11 @@
-// Natural Earth land polygons rasterised onto an equirectangular canvas. The map data and topojson
-// are loaded on first use, so the tower view never downloads them.
+// The globe's map: Natural Earth coastlines (50 m) and a faint lat/lon grid, as plain vector lines
+// on the sphere. The map data and topojson are loaded on first use, so the tower view never
+// downloads them.
 import type { GeometryObject, Topology } from "topojson-specification";
+import { latLonToUnit } from "./geo";
 
 type Ring = number[][];
 type Poly = Ring[];
-
-export interface LandRaster {
-    /** white land on transparent ocean */
-    canvas: HTMLCanvasElement;
-    /** the canvas's alpha channel, one byte per pixel (255 = land) */
-    alpha: Uint8Array;
-    w: number;
-    h: number;
-}
 
 function polygonsOf(geo: unknown): Poly[] {
     const out: Poly[] = [];
@@ -31,46 +24,54 @@ function polygonsOf(geo: unknown): Poly[] {
     return out;
 }
 
-export async function rasterizeLand(w = 2048, h = 1024): Promise<LandRaster> {
+/**
+ * Coastline segments (x, y, z of both ends, six floats per segment) on a sphere of the given
+ * radius. The polygons are cut along the date line and at the south pole, which would draw
+ * straight lines across the map, so those edges are skipped.
+ */
+export async function loadCoastlines(radius: number): Promise<Float32Array> {
     const [topojson, landModule] = await Promise.all([
         import("topojson-client"),
-        import("world-atlas/land-110m.json"),
+        import("world-atlas/land-50m.json"),
     ]);
     const topo = landModule.default as unknown as Topology;
     const land = topo.objects.land as GeometryObject;
     const polys = polygonsOf(topojson.feature(topo, land));
 
-    const canvas = document.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
-    ctx.fillStyle = "#fff";
-    const px = (lon: number) => ((lon + 180) / 360) * w;
-    const py = (lat: number) => ((90 - lat) / 180) * h;
+    const out: number[] = [];
+    const a = latLonToUnit(0, 0);
+    const b = latLonToUnit(0, 0);
     for (const poly of polys) {
-        // draw shifted copies so rings that cross ±180° still fill correctly
-        for (const off of [-w, 0, w]) {
-            ctx.beginPath();
-            for (const ring of poly) {
-                let prevLon: number | null = null;
-                let shift = 0;
-                ring.forEach(([lon, lat], i) => {
-                    if (prevLon !== null && Math.abs(lon - prevLon) > 180)
-                        shift += lon < prevLon ? 360 : -360;
-                    prevLon = lon;
-                    const x = px(lon + shift) + off;
-                    const y = py(lat);
-                    if (i === 0) ctx.moveTo(x, y);
-                    else ctx.lineTo(x, y);
-                });
-                ctx.closePath();
+        for (const ring of poly) {
+            for (let i = 1; i < ring.length; i++) {
+                const [lon1, lat1] = ring[i - 1];
+                const [lon2, lat2] = ring[i];
+                const onDateLine = Math.abs(lon1) > 179.99 && Math.abs(lon2) > 179.99;
+                const atPole = lat1 < -89.99 && lat2 < -89.99;
+                if (onDateLine || atPole) continue;
+                latLonToUnit(lat1, lon1, a).multiplyScalar(radius);
+                latLonToUnit(lat2, lon2, b).multiplyScalar(radius);
+                out.push(a.x, a.y, a.z, b.x, b.y, b.z);
             }
-            ctx.fill("evenodd");
         }
     }
+    return new Float32Array(out);
+}
 
-    const rgba = ctx.getImageData(0, 0, w, h).data;
-    const alpha = new Uint8Array(w * h);
-    for (let i = 0; i < alpha.length; i++) alpha[i] = rgba[i * 4 + 3];
-    return { canvas, alpha, w, h };
+/** A lat/lon grid every `step` degrees, as line segments on a sphere of the given radius. */
+export function buildGraticule(radius: number, step = 30): Float32Array {
+    const out: number[] = [];
+    const a = latLonToUnit(0, 0);
+    const b = latLonToUnit(0, 0);
+    const seg = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+        latLonToUnit(lat1, lon1, a).multiplyScalar(radius);
+        latLonToUnit(lat2, lon2, b).multiplyScalar(radius);
+        out.push(a.x, a.y, a.z, b.x, b.y, b.z);
+    };
+    const fine = 3; // degrees per segment along a line, so it follows the curve
+    for (let lat = -90 + step; lat < 90; lat += step)
+        for (let lon = -180; lon < 180; lon += fine) seg(lat, lon, lat, lon + fine);
+    for (let lon = -180; lon < 180; lon += step)
+        for (let lat = -90; lat < 90; lat += fine) seg(lat, lon, lat + fine, lon);
+    return new Float32Array(out);
 }

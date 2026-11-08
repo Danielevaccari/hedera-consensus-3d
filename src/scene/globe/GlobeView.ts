@@ -11,7 +11,6 @@ import {
     Matrix4,
     Mesh,
     MeshBasicMaterial,
-    MeshLambertMaterial,
     MeshPhongMaterial,
     NormalBlending,
     OctahedronGeometry,
@@ -26,6 +25,9 @@ import {
     type WebGLRenderer,
 } from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { LineMaterial } from "three/addons/lines/LineMaterial.js";
+import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
+import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
 import type { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { CFG, GLOBE } from "../../config";
 import type { LiveState } from "../../engine/LiveState";
@@ -38,8 +40,7 @@ import { PALETTES, type Palette, type Theme } from "../palette";
 import { createComposer } from "../renderer";
 import type { View3D } from "../View3D";
 import { coordsFor, latLonToUnit } from "./geo";
-import { rasterizeLand } from "./land";
-import { buildEarthMaps, type EarthMaps } from "./surface";
+import { buildGraticule, loadCoastlines } from "./land";
 
 const R = 10;
 const UP = new Vector3(0, 1, 0);
@@ -74,21 +75,18 @@ export class GlobeView implements View3D {
 
     private ambient = new AmbientLight(0xffffff, 0.55);
     private keyLight = new DirectionalLight(0xffffff, 1.1);
-    // open water until the generated surface is ready, then white so the map shows true to colour
-    private earthMat = new MeshPhongMaterial({
-        color: 0x12507f,
-        specular: 0x000000,
-        shininess: 30,
-    });
-    private cloudMat = new MeshLambertMaterial({
-        transparent: true,
-        depthWrite: false,
-        opacity: 0.7,
-    });
+    private earthMat = new MeshPhongMaterial({ shininess: 6 });
     private rimMat: ShaderMaterial;
-    private maps: EarthMaps | null = null;
-    private clouds: Mesh | null = null;
-    private surfaceRequested = false;
+    // the map is drawn as lines only: coastlines (loaded when the globe is first shown) and a faint grid
+    private coastMat = new LineMaterial({ linewidth: 1.05, worldUnits: false });
+    private gridMat = new LineMaterial({
+        linewidth: 0.8,
+        worldUnits: false,
+        transparent: true,
+        opacity: 0.55,
+    });
+    private coast: LineSegments2 | null = null;
+    private coastRequested = false;
 
     private spikeMesh;
     private markerMesh;
@@ -135,7 +133,12 @@ export class GlobeView implements View3D {
         controls.autoRotateSpeed = 0.25;
         controls.minDistance = R * 1.3;
         controls.maxDistance = R * 8;
-        this.composer = createComposer(renderer, scene, this.camera);
+        // a tight bloom: only the bright arcs and node dots glow, never the earth itself
+        this.composer = createComposer(renderer, scene, this.camera, {
+            strength: 0.55,
+            radius: 0.25,
+            threshold: 0.8,
+        });
 
         scene.add(this.backdrop.group);
         this.backdrop.nowDisc.visible = false; // the tower's "now" disc has no meaning here
@@ -145,8 +148,13 @@ export class GlobeView implements View3D {
         key.position.set(-6, 8, 10); // follows the camera, so the lit side always faces the viewer
         this.camera.add(key);
 
-        // the earth (textured once the map data has loaded), clouds, and a soft atmosphere that fades out
+        // a plain sphere, a faint grid, and (later) the coastlines; plus a soft atmosphere that fades out
         scene.add(new Mesh(new SphereGeometry(R, 96, 64), this.earthMat));
+        const gridGeo = new LineSegmentsGeometry();
+        gridGeo.setPositions(buildGraticule(R * 1.002));
+        const grid = new LineSegments2(gridGeo, this.gridMat);
+        grid.frustumCulled = false;
+        scene.add(grid);
         this.rimMat = new ShaderMaterial({
             uniforms: { c: { value: new Color("#60a5fa") }, strength: { value: 0.3 } },
             vertexShader:
@@ -185,36 +193,33 @@ export class GlobeView implements View3D {
     // Setup and options
     // =================================================================
 
-    /** Builds the earth maps from the land outlines (once, the first time the globe is shown). */
-    private async loadSurface() {
+    /** Loads the coastlines (once, the first time the globe is shown). */
+    private async loadCoast() {
         try {
-            const maps = buildEarthMaps(await rasterizeLand());
-            this.maps = maps;
-            const m = this.earthMat;
-            m.map = maps.color;
-            m.specularMap = maps.specular;
-            m.color.set(0xffffff);
-            m.specular.set(0x2e3a49);
-            m.needsUpdate = true;
-            this.cloudMat.map = maps.clouds;
-            this.cloudMat.needsUpdate = true;
-            this.clouds = new Mesh(new SphereGeometry(R * 1.012, 96, 64), this.cloudMat);
-            this.scene.add(this.clouds);
+            const geo = new LineSegmentsGeometry();
+            geo.setPositions(await loadCoastlines(R * 1.004));
+            this.coast = new LineSegments2(geo, this.coastMat);
+            this.coast.frustumCulled = false;
+            this.scene.add(this.coast);
         } catch (err) {
-            console.warn("globe: could not build the earth surface", err);
+            console.warn("globe: could not load the coastlines", err);
         }
     }
 
-    /** Same natural earth in both themes; only the sky behind it, the glow and the lines change. */
+    /** A plain sphere with a line map; the colours follow the theme. */
     setTheme(theme: Theme) {
         const pal = (this.pal = PALETTES[theme]);
         const light = theme === "light";
-        // (three.js divides diffuse light by pi, so these are larger than they look: the side facing
-        // the viewer lands near the map's own colours and the limb falls off to about a third)
-        this.ambient.intensity = 1.3;
-        this.keyLight.intensity = 2.0;
+        // a pale globe wants soft, even light; the night-blue one wants contrast
+        // (three.js divides diffuse light by pi, so a bright globe needs large intensities)
+        this.ambient.intensity = light ? 2.7 : 0.55;
+        this.keyLight.intensity = light ? 1.0 : 1.1;
+        this.earthMat.color.set(light ? 0xd2dbe9 : 0x0b1424);
+        this.earthMat.specular.set(light ? 0x8896ad : 0x111827);
+        this.coastMat.color.set(light ? 0x3f4d6b : 0x8aa0d0);
+        this.gridMat.color.set(light ? 0xa3b0c6 : 0x2a3a5e);
         this.rimMat.uniforms.c.value.set(light ? "#3b82f6" : "#60a5fa");
-        this.rimMat.uniforms.strength.value = light ? 0.14 : 0.16;
+        this.rimMat.uniforms.strength.value = 0.08; // barely there
         this.trackStar.material.color.copy(pal.gold);
         this.trackRing.material.color.copy(pal.gold);
         for (const lb of this.lines) lb.setBase(pal.base, light, light ? 2.4 : 1);
@@ -295,9 +300,9 @@ export class GlobeView implements View3D {
     setActive(on: boolean) {
         this.controls.enabled = on;
         // the map data and its raster are only fetched and computed once the globe is first shown
-        if (on && !this.surfaceRequested) {
-            this.surfaceRequested = true;
-            void this.loadSurface();
+        if (on && !this.coastRequested) {
+            this.coastRequested = true;
+            void this.loadCoast();
         }
     }
 
@@ -305,6 +310,8 @@ export class GlobeView implements View3D {
         this.composer.setPixelRatio(this.renderer.getPixelRatio());
         this.composer.setSize(w, h);
         for (const lb of this.lines) lb.setResolution(w, h);
+        this.coastMat.resolution.set(w, h);
+        this.gridMat.resolution.set(w, h);
         const aspect = w / h;
         this.camera.aspect = aspect;
         this.camera.updateProjectionMatrix();
@@ -338,7 +345,6 @@ export class GlobeView implements View3D {
 
     frame(dt: number) {
         this.frameNo++;
-        if (this.clouds) this.clouds.rotation.y += dt * 0.006; // drifts slightly faster than the ground
         const { state, pal, fx, tmpM, tmpC, tmpC2, tmpS } = this;
         const { txs, tracked, displayRel, realT } = state;
 
@@ -593,9 +599,9 @@ export class GlobeView implements View3D {
         this.controls.dispose();
         for (const lb of this.lines) lb.dispose();
         if (this.trackLabel) disposeSprite(this.scene, this.trackLabel);
-        this.maps?.color.dispose();
-        this.maps?.specular.dispose();
-        this.maps?.clouds.dispose();
+        this.coast?.geometry.dispose();
+        this.coastMat.dispose();
+        this.gridMat.dispose();
         this.composer.dispose();
     }
 }
