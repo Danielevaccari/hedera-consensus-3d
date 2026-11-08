@@ -1,4 +1,4 @@
-// The 3D tower: one column per consensus node, every transaction at its consensus time.
+// The tower: one column per consensus node, every transaction at its consensus time.
 // Reads LiveState every frame and draws it; it never changes the data.
 import {
     AdditiveBlending,
@@ -6,7 +6,6 @@ import {
     Color,
     Fog,
     FrontSide,
-    HalfFloatType,
     IcosahedronGeometry,
     Matrix4,
     Mesh,
@@ -18,21 +17,15 @@ import {
     Scene,
     SphereGeometry,
     TorusGeometry,
-    Vector2,
     Vector3,
-    WebGLRenderer,
-    WebGLRenderTarget,
+    type WebGLRenderer,
 } from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
-import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
-import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
-import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import type { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { CFG, FADE } from "../config";
 import type { LiveState } from "../engine/LiveState";
 import type { Market } from "../engine/Market";
 import type { Hover, Tx } from "../engine/types";
-import { isLowPowerDevice } from "../lib/device";
 import { fmtInt, trunc } from "../lib/format";
 import { createBackdrop } from "./backdrop";
 import {
@@ -45,6 +38,8 @@ import {
 } from "./helpers";
 import { LineBuf } from "./LineBuf";
 import { PALETTES, type Palette, type Theme } from "./palette";
+import { createComposer } from "./renderer";
+import type { View3D } from "./View3D";
 
 const TX_CAP = 8000;
 const DOT_CAP = 3000;
@@ -59,11 +54,9 @@ interface NodeVisual {
     fx: Color;
 }
 
-export class SceneView {
-    /** flashy effects; only ever on with the dark theme */
+export class TowerView implements View3D {
     fx = false;
     private pal: Palette = PALETTES.light;
-    private renderer: WebGLRenderer;
     private scene = new Scene();
     private fog = new Fog(0xffffff, 55, 120);
     private camera = new PerspectiveCamera(42, 1, 0.1, 600);
@@ -94,6 +87,7 @@ export class SceneView {
     // ---- layout: cylinder <-> flat wall morph ----
     private colX = new Float32Array(1);
     private colZ = new Float32Array(1);
+    private fitted = false;
     private morph = 0;
     private morphTarget = 0;
     private camTween: { from: Vector3; to: Vector3; t: number } | null = null;
@@ -109,21 +103,12 @@ export class SceneView {
     private v3 = new Vector3();
 
     constructor(
+        private renderer: WebGLRenderer,
         private canvas: HTMLCanvasElement,
         private state: LiveState,
         private market: Market,
     ) {
-        this.renderer = new WebGLRenderer({
-            canvas,
-            antialias: true,
-            powerPreference: "high-performance",
-        });
-        // render at least 1.5x so thin lines and labels stay sharp on standard-DPI screens too;
-        // low-power devices stay at 1.5x at most, since fill rate is what drains phones
-        const dpr = window.devicePixelRatio;
-        const ratio = isLowPowerDevice() ? Math.min(dpr, 1.5) : Math.min(Math.max(dpr, 1.5), 3);
-        this.renderer.setPixelRatio(ratio);
-        this.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+        this.anisotropy = renderer.capabilities.getMaxAnisotropy();
 
         const scene = this.scene;
         scene.fog = this.fog;
@@ -137,14 +122,7 @@ export class SceneView {
         controls.autoRotateSpeed = 0.25;
         controls.minDistance = 8;
         controls.maxDistance = 140;
-
-        // bloom renders into a multisampled target, so edges stay antialiased under the glow
-        const target = new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: 4 });
-        this.composer = new EffectComposer(this.renderer, target);
-        this.composer.addPass(new RenderPass(scene, this.camera));
-        // threshold 0.55: only bright parts glow (nodes, landing flashes, sparks); lines stay crisp
-        this.composer.addPass(new UnrealBloomPass(new Vector2(256, 256), 0.9, 0.3, 0.55));
-        this.composer.addPass(new OutputPass());
+        this.composer = createComposer(renderer, scene, this.camera);
 
         scene.add(this.backdrop.group);
 
@@ -172,14 +150,22 @@ export class SceneView {
     // Setup and options
     // =================================================================
 
-    /** Switches the scene's colours; labels are redrawn in the new palette. */
+    /** Bloom and additive glow need a dark background; light flashy uses coloured, normal blends. */
+    private get glow() {
+        return this.fx && this.pal.theme === "dark";
+    }
+
     setTheme(theme: Theme) {
         const pal = (this.pal = PALETTES[theme]);
         this.fog.color.copy(pal.bg);
-        for (const lb of this.lines)
-            lb.setBase(pal.base, theme === "light", theme === "light" ? 1.7 : 1);
+        const light = theme === "light";
+        for (const lb of this.lines) lb.setBase(pal.base, light, light ? 1.7 : 1);
         this.trackStar.material.color.copy(pal.gold);
         this.trackHalo.material.color.copy(pal.gold);
+        this.backdrop.setTheme(light);
+        const shock = this.shockMesh.material as MeshBasicMaterial;
+        shock.blending = light ? NormalBlending : AdditiveBlending;
+        shock.needsUpdate = true;
 
         if (this.nowLabel) disposeSprite(this.scene, this.nowLabel);
         this.nowLabel = textSprite(
@@ -196,7 +182,6 @@ export class SceneView {
         else this.setFx(this.fx);
     }
 
-    /** (Re)creates the node spheres and labels; call once the nodes are known. */
     buildNodes() {
         for (const v of this.nodeVisuals) {
             this.scene.remove(v.core, v.glow);
@@ -234,18 +219,18 @@ export class SceneView {
         this.setFx(this.fx);
     }
 
-    /** Flashy adds bloom, a starfield and nebula, neon colours, thick trails and landing effects. */
     setFx(fx: boolean) {
         this.fx = fx;
+        const glow = this.glow;
         this.backdrop.group.visible = fx;
         this.scene.background = fx ? null : this.pal.bg;
-        for (const lb of this.lines) lb.setFx(fx);
+        for (const lb of this.lines) lb.setFx(fx, glow);
         for (const v of this.nodeVisuals) {
             const c = fx ? v.fx : v.calm;
             v.core.material.color.copy(c);
             const g = v.glow.material;
             g.color.copy(c);
-            g.blending = fx ? AdditiveBlending : NormalBlending;
+            g.blending = glow ? AdditiveBlending : NormalBlending;
             g.side = fx ? FrontSide : BackSide;
             g.needsUpdate = true;
         }
@@ -257,6 +242,10 @@ export class SceneView {
     }
     set autoRotate(on: boolean) {
         this.controls.autoRotate = on;
+    }
+
+    setActive(on: boolean) {
+        this.controls.enabled = on;
     }
 
     get unrolled() {
@@ -276,14 +265,24 @@ export class SceneView {
     }
 
     resize(w: number, h: number) {
-        // a zero-size framebuffer is invalid; happens briefly while the layout switches
-        if (!w || !h) return;
-        this.renderer.setSize(w, h, false);
         this.composer.setPixelRatio(this.renderer.getPixelRatio());
         this.composer.setSize(w, h);
         for (const lb of this.lines) lb.setResolution(w, h);
         this.camera.aspect = w / h;
         this.camera.updateProjectionMatrix();
+        if (!this.fitted) {
+            // portrait screens: back off at the start so the whole tower (about 34 units across,
+            // labels included) fits the width
+            this.fitted = true;
+            const offset = this.camera.position.clone().sub(this.controls.target);
+            const visibleWidth =
+                2 *
+                offset.length() *
+                Math.tan((this.camera.fov / 2) * (Math.PI / 180)) *
+                this.camera.aspect;
+            const scale = Math.min(2.2, Math.max(1, 34 / visibleWidth));
+            this.camera.position.copy(this.controls.target).addScaledVector(offset, scale);
+        }
     }
 
     removeBlockLabels(nums: number[]) {
@@ -312,7 +311,7 @@ export class SceneView {
         this.updateClock(m, dt);
         this.updateTrackMarker();
         this.controls.update();
-        if (this.fx) this.composer.render();
+        if (this.glow) this.composer.render();
         else this.renderer.render(this.scene, this.camera);
     }
 
@@ -409,12 +408,20 @@ export class SceneView {
                   ? pal.red
                   : pal.kind(tx.kind),
         );
-        if (this.fx) {
-            if (born < 0.6) out.lerp(pal.white, (1 - born / 0.6) * 0.6);
-            return out.multiplyScalar(fade * 1.1);
-        }
-        // fade towards the background (black on dark, the light background on light)
-        return out.lerp(pal.base, 1 - fade);
+        if (pal.theme === "light") return out.lerp(pal.base, 1 - fade); // fade towards the paper
+        if (this.fx && born < 0.6) out.lerp(pal.white, (1 - born / 0.6) * 0.6);
+        return out.multiplyScalar(fade * (this.fx ? 1.1 : 1));
+    }
+
+    /**
+     * A colour that fades out as `f` goes 1 -> 0: dimmer on dark (boosted, since it is additive
+     * light), paler on light (blended towards the paper).
+     */
+    private fadedColor(out: Color, col: Color, f: number, boost: number) {
+        out.copy(col);
+        return this.pal.theme === "dark"
+            ? out.multiplyScalar(boost * f)
+            : out.lerp(this.pal.base, 1 - f);
     }
 
     /** Transactions flying in, then resting at their consensus time, linked in consensus order. */
@@ -517,7 +524,7 @@ export class SceneView {
                     dummy.scale.setScalar(0.3 + q * 1.8);
                     dummy.updateMatrix();
                     shockMesh.setMatrixAt(si, dummy.matrix);
-                    shockMesh.setColorAt(si, tmpC2.copy(col).multiplyScalar(1.2 * (1 - q)));
+                    shockMesh.setColorAt(si, this.fadedColor(tmpC2, col, 1 - q, 1.2));
                     si++;
                 }
                 for (let k2 = 0; k2 < 6 && di < DOT_CAP - 10; k2++) {
@@ -528,7 +535,7 @@ export class SceneView {
                     tmpM.makeScale(ss, ss, ss)
                         .setPosition(x + Math.cos(a) * rr, NY + q * 1.2 - q * q * 2, z + Math.sin(a) * rr);
                     dotMesh.setMatrixAt(di, tmpM);
-                    dotMesh.setColorAt(di, tmpC2.copy(col).multiplyScalar(1.4 * (1 - q)));
+                    dotMesh.setColorAt(di, this.fadedColor(tmpC2, col, 1 - q, 1.4));
                     di++;
                 }
             }
@@ -545,7 +552,7 @@ export class SceneView {
                     dummy.scale.setScalar(0.5 + q * 5);
                     dummy.updateMatrix();
                     shockMesh.setMatrixAt(si, dummy.matrix);
-                    shockMesh.setColorAt(si, tmpC2.copy(GOLD).multiplyScalar(1.5 * (1 - q)));
+                    shockMesh.setColorAt(si, this.fadedColor(tmpC2, GOLD, 1 - q, 1.5));
                     si++;
                 }
             }
@@ -614,7 +621,7 @@ export class SceneView {
             const flash =
                 b.sealedAt !== null ? Math.max(0, 1 - (state.realT - b.sealedAt) / 1.4) : 0;
             tmpC.copy(pal.block[b.num % pal.block.length]);
-            if (fx) tmpC.lerp(pal.white, flash * 0.7);
+            if (fx && pal.theme === "dark") tmpC.lerp(pal.white, flash * 0.7);
             const major = b.num % 5 === 0;
             const kk =
                 (major ? (fx ? 0.2 : 0.3) : fx ? 0.06 : 0.13) *
@@ -672,7 +679,7 @@ export class SceneView {
         const disc = this.backdrop.nowDisc;
         disc.visible = m < 0.98;
         disc.scale.setScalar(CFG.R * (1 - m) + 0.01);
-        disc.material.opacity = 0.05 * (1 - m);
+        disc.material.opacity = (this.pal.theme === "dark" ? 0.05 : 0.09) * (1 - m);
         if (fx) this.backdrop.tick(state.realT, dt);
         ringLines.flush();
         const label = this.nowLabel!;
@@ -736,6 +743,5 @@ export class SceneView {
         this.removeBlockLabels([...this.blockLabels.keys()]);
         for (const lb of this.lines) lb.dispose();
         this.composer.dispose();
-        this.renderer.dispose();
     }
 }

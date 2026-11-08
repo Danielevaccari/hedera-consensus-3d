@@ -1,25 +1,28 @@
 /*
- * The stage: the 3D viewport fills the screen and the HUD sits on a grid on top of it.
+ * The stage: a split view. The 3D view fills the left, a slim tabbed drawer sits on the right.
  *
- *   ┌──────────── top bar ────────────┐
- *   │ journey │               │ ledger │
- *   │         │               │  log   │
- *   │         │    charts     │        │
- *   └────────── control bar ──────────┘
+ *   ┌───────────────────────────────┬────────┐
+ *   │ title · view · stats · tools  │ tabs   │
+ *   │                               │        │
+ *   │          3D view              │ ledger │
+ *   │                               │ journey│
+ *   │      [charts] [controls]      │ log    │
+ *   └───────────────────────────────┴────────┘
  *
- * Only the panels themselves catch the pointer; everything else falls through to the canvas.
+ * On narrow screens the drawer drops below the view, which fills the first screen.
  */
 .stage {
-    position: relative;
+    display: flex;
     height: 100vh;
     height: 100dvh;
-    min-height: 600px;
+    min-height: 560px;
+    background: var(--bg);
+}
+.view-col {
+    position: relative;
+    flex: 1;
+    min-width: 0;
     overflow: hidden;
-    display: grid;
-    grid-template-columns: 272px minmax(0, 1fr) 300px;
-    grid-template-rows: auto minmax(0, 1fr) auto auto;
-    gap: var(--gap);
-    padding: 10px;
     background: var(--stage-bg);
 }
 .viewport {
@@ -37,58 +40,23 @@
     cursor: grabbing;
 }
 
-.hud {
-    position: relative;
-    z-index: 2;
-    min-width: 0;
-    min-height: 0;
-}
-.hud-top {
-    grid-column: 1 / -1;
-    grid-row: 1;
-}
-.hud-left,
-.hud-right {
-    grid-row: 2 / 4;
-    display: flex;
-    flex-direction: column;
-    gap: var(--gap);
-    pointer-events: none;
-}
-.hud-left {
-    grid-column: 1;
-}
-.hud-right {
-    grid-column: 3;
-}
-.hud-left > *,
-.hud-right > * {
-    pointer-events: auto;
-}
-.charts {
-    grid-column: 2;
-    grid-row: 3;
-    align-self: end;
-}
-.hud-bottom {
-    grid-column: 1 / -1;
-    grid-row: 4;
-}
-
-/* ---------- top bar: title + live badge + stats in one slim row ---------- */
-.hud-top {
+/* ---------- top bar ---------- */
+.topbar {
+    position: absolute;
+    z-index: 3;
+    top: 10px;
+    left: 10px;
+    right: 10px;
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 6px 8px 6px 14px;
+    padding: 5px 6px 5px 12px;
 }
 .brand {
     display: flex;
     align-items: center;
-    gap: 10px;
-    min-width: 0;
-    flex: 0 1 auto;
-    cursor: help;
+    gap: 8px;
+    flex: none;
 }
 .brand h1 {
     margin: 0;
@@ -96,10 +64,8 @@
     letter-spacing: -0.01em;
     font-weight: 700;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
-.brand h1 span {
+.brand h1 span:first-child {
     color: var(--cyan);
 }
 .live {
@@ -115,7 +81,6 @@
     color: var(--green);
     background: rgba(74, 222, 128, 0.1);
     border: 1px solid rgba(74, 222, 128, 0.35);
-    flex: none;
 }
 .live i {
     width: 6px;
@@ -131,18 +96,44 @@
 .live.bad i {
     background: var(--red);
 }
+
+.seg {
+    display: inline-flex;
+    flex: none;
+    border: 1px solid var(--line2);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+.seg button {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 12px;
+    cursor: pointer;
+}
+.seg button:hover {
+    color: var(--text);
+}
+.seg button.on {
+    background: var(--text);
+    color: var(--bg);
+}
+.seg button:focus-visible {
+    outline: 2px solid var(--cyan);
+    outline-offset: -2px;
+}
+
+/* four plain stats, no boxes */
 .stats {
     display: flex;
-    gap: 4px;
+    gap: 16px;
     margin-left: auto;
-    flex-wrap: wrap;
-    justify-content: flex-end;
 }
 .stat {
-    padding: 3px 8px;
-    border-radius: var(--radius-sm);
-    background: var(--subtle);
-    border: 1px solid var(--line);
     text-align: right;
 }
 .stat b {
@@ -162,10 +153,42 @@
     letter-spacing: 0.07em;
     white-space: nowrap;
 }
+.tools {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex: none;
+}
+.btn.icon {
+    padding: 4px 9px;
+    font-size: 14px;
+    line-height: 1.1;
+}
 
-/* ---------- charts strip ---------- */
+/* ---------- bottom: optional charts, then the control bar ---------- */
+.foot {
+    position: absolute;
+    z-index: 3;
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    pointer-events: none;
+}
+.foot > * {
+    pointer-events: auto;
+}
+.controls {
+    display: flex;
+    gap: 6px;
+    padding: 6px;
+}
 .charts {
-    height: 64px;
+    width: min(100%, 780px);
+    height: 70px;
     padding: 6px 10px;
     display: grid;
     grid-template-columns: 1.3fr 1fr 1.3fr;
@@ -207,57 +230,106 @@
     margin-top: 4px;
 }
 
-/* ---------- control bar ---------- */
-.hud-bottom {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-    flex-wrap: wrap;
-    padding: 6px 8px;
-}
-.fx-toggle {
-    min-width: 84px;
-    justify-content: center;
-}
-.hint {
-    margin-left: auto;
-    font-size: 11px;
-    color: var(--dim);
-    letter-spacing: 0.02em;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-width: 0;
-    padding-right: 4px;
-}
-
-/* ---------- legend popover ---------- */
-.legend-wrap {
+/* ---------- popovers (options, legend, info) ---------- */
+.popover-wrap {
     position: relative;
 }
-.legend {
+.btn.open {
+    background: var(--btn-hover);
+    border-color: var(--btn-hover-line);
+}
+.popover {
     position: absolute;
-    bottom: calc(100% + 10px);
-    left: 0;
-    z-index: 4;
-    width: 340px;
-    max-width: calc(100vw - 32px);
+    z-index: 10;
+    max-width: calc(100vw - 20px);
     padding: 12px;
+    background: var(--panel-solid);
+    animation: slidein 0.15s ease-out;
+}
+.popover.up {
+    bottom: calc(100% + 8px);
+}
+.popover.down {
+    top: calc(100% + 8px);
+}
+.popover.left {
+    left: 0;
+}
+.popover.right {
+    right: 0;
+}
+.popover .fine {
+    margin: 10px 0 0;
+    padding-top: 8px;
+    border-top: 1px solid var(--line);
+    font-size: 11px;
+    line-height: 1.45;
+    color: var(--dim);
+}
+.info {
+    width: 310px;
+    max-width: 100%;
+    font-size: 12px;
+    color: var(--muted);
+}
+.info p {
+    margin: 0 0 10px;
+    line-height: 1.5;
+}
+.info p.fine {
+    margin: 10px 0 0;
+}
+.info dl {
+    margin: 0;
+}
+.info dl div {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 3px 0;
+    border-bottom: 1px dashed var(--line);
+}
+.info dt {
+    color: var(--muted);
+}
+.info dd {
+    margin: 0;
+    font-family: var(--mono);
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+}
+.options {
+    width: 250px;
+    max-width: 100%;
+}
+.opt {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    padding: 6px 2px;
+    font-size: 12.5px;
+    cursor: pointer;
+}
+.opt input {
+    margin: 2px 0 0;
+    accent-color: var(--cyan);
+    width: 14px;
+    height: 14px;
+    flex: none;
+}
+.opt small {
+    display: block;
+    color: var(--dim);
+    font-size: 11px;
+}
+.legend {
+    width: 300px;
+    max-width: 100%;
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 7px 14px;
     font-size: 12px;
     color: var(--muted);
-    background: var(--panel-solid);
-    animation: slidein 0.15s ease-out;
-}
-.legend-src {
-    grid-column: 1 / -1;
-    margin: 4px 0 0;
-    padding-top: 8px;
-    border-top: 1px solid var(--line);
-    font-size: 11px;
-    color: var(--dim);
 }
 .lg {
     display: inline-flex;
@@ -315,6 +387,13 @@
 .sw.now {
     background: var(--gold);
 }
+.sw.spike {
+    border-radius: 1px;
+    width: 3px;
+    height: 14px;
+    background: var(--violet);
+    margin: 0 6px;
+}
 .sw.stake {
     width: 13px;
     height: 13px;
@@ -323,7 +402,73 @@
     margin-left: 7px;
 }
 
-/* ---------- overlays inside the viewport ---------- */
+/* ---------- drawer: ledger / journey / log ---------- */
+.drawer {
+    flex: none;
+    width: 340px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: var(--panel-solid);
+    border-left: 1px solid var(--line);
+}
+.tabs {
+    display: flex;
+    align-items: center;
+    flex: none;
+    padding: 0 6px;
+    border-bottom: 1px solid var(--line);
+}
+.tabs button {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 12px 10px 10px;
+    cursor: pointer;
+}
+.tabs button:hover {
+    color: var(--text);
+}
+.tabs button.on {
+    color: var(--text);
+    border-bottom-color: var(--cyan);
+}
+.tabs button:focus-visible {
+    outline: 2px solid var(--cyan);
+    outline-offset: -2px;
+}
+.tab-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-left: 6px;
+    border-radius: 50%;
+    background: var(--gold);
+    vertical-align: middle;
+}
+.tabs .drawer-close {
+    margin-left: auto;
+    padding: 6px 10px;
+    font-size: 18px;
+    letter-spacing: 0;
+    text-transform: none;
+    border-bottom: 0;
+}
+.tab-body {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 10px 12px 14px;
+}
+
+/* ---------- overlays inside the view ---------- */
 .tip {
     position: absolute;
     z-index: 5;
@@ -440,88 +585,79 @@
     margin-top: 14px;
 }
 
-/* presentation mode: only the 3D view */
-body.present .stage {
-    padding: 0;
+/* ---------- narrower screens ---------- */
+@media (max-width: 1100px) {
+    .stat:nth-child(2) {
+        display: none; /* block number: least important of the four */
+    }
 }
 
-/* ---------- narrower screens: stack everything around a fixed-height viewport ---------- */
-@media (max-width: 1280px) {
+/* Stacked: the 3D view fills the first screen, everything else is below it. */
+@media (max-width: 900px) {
     .stage {
-        grid-template-columns: 250px minmax(0, 1fr) 280px;
-    }
-    .stat:nth-child(4) {
-        display: none; /* ping share: least important stat */
-    }
-}
-@media (max-width: 1100px) {
-    .stage {
+        flex-direction: column;
         height: auto;
         min-height: 0;
-        display: flex;
-        flex-direction: column;
-        padding: 10px 10px 14px;
-        overflow: visible;
     }
-    .viewport {
-        position: relative;
-        order: 2;
-        height: 62vh;
-        min-height: 380px;
-        border-radius: var(--radius);
-        overflow: hidden;
-        border: 1px solid var(--line);
-    }
-    body.present .viewport {
+    .view-col {
+        flex: none;
         height: 100vh;
-        border: 0;
-        border-radius: 0;
+        height: 100svh;
+        min-height: 440px;
     }
-    .hud-top {
-        order: 1;
-        flex-wrap: wrap;
+    .drawer {
+        width: auto;
+        border-left: 0;
+        border-top: 1px solid var(--line);
+    }
+    .tab-body {
+        max-height: 70vh;
     }
     .stats {
-        margin-left: 0;
-        justify-content: flex-start;
+        display: none; /* all of them are in the (i) popover */
     }
-    .stat:nth-child(4) {
-        display: block;
-    }
-    .charts {
-        order: 3;
-        height: 78px;
-    }
-    .hud-bottom {
-        order: 4;
-    }
-    .hud-left {
-        order: 5;
-    }
-    .hud-right {
-        order: 6;
-    }
-    .hud-left .card,
-    .hud-right .card {
-        max-height: 360px;
-    }
-    .hint {
-        display: none;
+    .tools {
+        margin-left: auto;
     }
 }
-@media (max-width: 640px) {
-    .brand {
-        flex-wrap: wrap;
+@media (max-width: 560px) {
+    .topbar {
+        top: 8px;
+        left: 8px;
+        right: 8px;
+        gap: 8px;
+        padding-left: 10px;
     }
-    .stat {
-        flex: 1 1 22%;
+    .brand h1 {
+        font-size: 13px;
+    }
+    .sm-hide,
+    .live b,
+    .details .lbl {
+        display: none;
+    }
+    .seg button {
+        padding: 4px 9px;
+    }
+    .tools {
+        gap: 4px;
+    }
+    .btn.icon {
+        padding: 4px 8px;
+    }
+    .foot {
+        left: 8px;
+        right: 8px;
+        bottom: 8px;
+    }
+    .controls .lbl {
+        display: none;
     }
     .charts {
         grid-template-columns: 1fr;
-        height: auto;
+        height: 78px;
     }
-    .chart canvas {
-        height: 40px;
-        flex: none;
+    .charts .chart:nth-child(n + 2) {
+        display: none;
     }
 }

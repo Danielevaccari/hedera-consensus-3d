@@ -8,6 +8,7 @@ import {
     InterleavedBufferAttribute,
     LineBasicMaterial,
     LineSegments,
+    NormalBlending,
     type Scene,
 } from "three";
 import { LineMaterial } from "three/addons/lines/LineMaterial.js";
@@ -78,9 +79,16 @@ export class LineBuf {
         scene.add(this.fat);
     }
 
-    setFx(fx: boolean) {
+    /** Flashy swaps the 1px lines for thick ones; `additive` glow only works on dark backgrounds. */
+    setFx(fx: boolean, additive: boolean) {
         this.thin.visible = !fx;
         this.fat.visible = fx;
+        const m = this.fat.material;
+        const blending = additive ? AdditiveBlending : NormalBlending;
+        if (m.blending !== blending) {
+            m.blending = blending;
+            m.needsUpdate = true;
+        }
     }
 
     setResolution(w: number, h: number) {

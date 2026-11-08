@@ -1,67 +1,3 @@
-/* ---------- collapsible cards ---------- */
-.card {
-    padding: 8px 10px 10px;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-}
-.card.collapsed {
-    flex: none !important;
-    padding-bottom: 8px;
-}
-.card h2 {
-    margin: 0;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.13em;
-    color: var(--muted);
-    font-weight: 600;
-}
-.card-toggle {
-    all: unset;
-    box-sizing: border-box;
-    width: 100%;
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    padding: 2px 0;
-    cursor: pointer;
-    border-radius: var(--radius-sm);
-}
-.card-toggle:hover {
-    color: var(--text);
-}
-.card-title {
-    flex: 1;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.chev {
-    font-size: 11px;
-    transition: transform 0.15s;
-}
-.card.collapsed .chev {
-    transform: rotate(-90deg);
-}
-.dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--green);
-    flex: none;
-}
-.dot.bad {
-    background: var(--red);
-}
-.card-body {
-    margin-top: 8px;
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    overflow: auto;
-}
 .empty {
     margin: 0;
     color: var(--muted);
@@ -70,9 +6,6 @@
 }
 
 /* ---------- transaction journey ---------- */
-.tracker {
-    flex: 1;
-}
 .tx-head {
     display: flex;
     align-items: flex-start;
@@ -184,11 +117,8 @@
 }
 
 /* ---------- ledger ---------- */
-.ledger {
-    flex: 1.5;
-}
-.ledger ol,
-.log ul {
+ol.ledger,
+ul.log {
     list-style: none;
     margin: 0;
     padding: 0;
@@ -258,10 +188,7 @@
 }
 
 /* ---------- network log ---------- */
-.log {
-    flex: 1;
-}
-.log ul {
+ul.log {
     font-size: 11.5px;
 }
 .log li {

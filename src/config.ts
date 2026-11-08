@@ -71,7 +71,9 @@ export const isPingMemo = (memo: string) => /monitor/i.test(memo);
 export const STORAGE_KEYS = {
     pings: "hedera-tower-pings",
     style: "hedera-tower-style",
-    panels: "hedera-tower-panels",
+    view: "hedera-tower-view",
+    charts: "hedera-tower-charts",
+    drawer: "hedera-tower-drawer",
     /** also read by the inline script in index.html */
     theme: "hedera-tower-theme",
 } as const;

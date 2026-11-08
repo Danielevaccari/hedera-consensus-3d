@@ -59,9 +59,8 @@ const PIECES: Piece[] = [
             <>
                 The parent links form a directed acyclic graph: one line per node, with a cross-link
                 for every sync. Every node holds a copy, and the copies differ only at the newest
-                edges. On mainnet this graph exists only inside the nodes. The tower above shows
-                what comes out of it: every transaction with the timestamp and order the graph
-                produced.
+                edges. On mainnet this graph exists only inside the nodes. The view above shows what
+                comes out of it: every transaction with the timestamp and order the graph produced.
             </>
         ),
     },
@@ -119,7 +118,7 @@ const PIECES: Piece[] = [
                 witnesses can see gets <b>round received = r</b>. Its consensus timestamp is the{" "}
                 <b>median</b> of the times those nodes first received it, so a dishonest minority
                 cannot drag it earlier or later. These are the timestamps that position every dot in
-                the tower above.
+                the view above.
             </>
         ),
     },

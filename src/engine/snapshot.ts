@@ -1,6 +1,7 @@
 // The read-only view of the engine that React renders, rebuilt a few times per second.
 import { CFG, KIND_LIST, LEDGER_ROWS, type Kind } from "../config";
 import type { Theme } from "../scene/palette";
+import type { ViewId } from "../scene/View3D";
 import type { LiveState } from "./LiveState";
 import type { Block, HNode, LogEntry, Tx } from "./types";
 
@@ -8,9 +9,12 @@ export type Phase = "loading" | "error" | "live";
 
 export interface Options {
     paused: boolean;
-    /** flashy effects actually showing (needs the dark theme) */
+    /** flashy effects (they adapt to the theme) */
     fx: boolean;
     theme: Theme;
+    view: ViewId;
+    /** the optional live charts strip */
+    charts: boolean;
     hidePings: boolean;
     unrolled: boolean;
     autoRotate: boolean;

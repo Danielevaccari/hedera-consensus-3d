@@ -1,8 +1,15 @@
 # Hedera Mainnet Consensus 3D
 
-A live 3D view of Hedera mainnet. Each column is a real consensus node (sphere size = stake),
-and every dot is a real transaction placed in the column of the node it was submitted to, at its
-consensus timestamp. Time flows downward. All data comes straight from the public
+A live 3D view of Hedera mainnet in two views that share one data feed:
+
+- **Tower**: each column is a real consensus node (sphere size = stake) and every dot is a real
+  transaction placed in the column of the node it was submitted to, at its consensus timestamp.
+  Time flows downward.
+- **Globe**: each node at its host city, spikes for transactions received, and arcs along the real
+  consensus order from one transaction to the next. Switch with the Tower/Globe control or open
+  `/?view=globe`.
+
+All data comes straight from the public
 [Hedera mirror node](https://docs.hedera.com/hedera/sdks-and-apis/rest-api); there is no backend.
 
 Below the 3D view, a short explainer covers the main pieces of the hashgraph algorithm (gossip
@@ -10,13 +17,17 @@ about gossip, events, rounds and witnesses, virtual voting, consensus timestamps
 
 ## Features
 
+- Light theme by default, dark theme one click away (remembered, applied before first paint)
+- Calm and flashy styles in both themes: bloom and starfield on dark, pastel washes and coloured
+  shadows on light
 - Live tower of the last 2 minutes of mainnet transactions, blocks (record files) and the
-  replayed consensus clock
+  replayed consensus clock; unroll it into a flat wall
 - Transaction journey: follow one transaction from signing to its block
-- Ledger in consensus order, network log, live charts (tx/s, type mix, tx per node)
+- Ledger in consensus order, network log, optional live charts (tx/s, type mix, tx per node)
 - Whale alerts for HBAR transfers ≥ $10k, optional hiding of Hedera's health-check pings
-- Flashy (bloom, starfield) and calm styles, unrolled "wall" view, presentation mode (`P`)
-- Collapsible panels and a legend popover to keep the 3D view large
+- Presentation mode (`P`)
+- Uncluttered layout: the 3D view fills the screen with one tabbed side drawer; on phones the view
+  is the first thing on screen and the drawer sits below it
 
 ## Stack
 
@@ -47,14 +58,16 @@ src/
     Market.ts            HBAR/USD, token metadata, transaction summaries
     Engine.ts            wires state + feed + scene, runs the frame loop, exposes UI stores
     snapshot.ts          read-only view models for React (stats, ledger, tracker, charts)
-  scene/                 three.js rendering (SceneView, line batches, sprites, backdrop)
+  scene/                 three.js rendering, one renderer shared by two views
+    TowerView.ts         the tower; globe/GlobeView.ts the globe (View3D is their interface)
+    palette.ts           colours per theme; renderer.ts shared renderer and bloom chain
   charts/                2D canvas chart drawing
-  components/            React UI (top bar, panels, controls, tooltip, explainer)
-  hooks/                 useStore, keyboard shortcuts, persisted flags
-  styles/                global CSS split by area (base, stage/HUD, panels, explainer, flashy)
+  components/            React UI (top bar, tabbed drawer, controls, popovers, tooltip, explainer)
+  hooks/                 useStore, keyboard shortcuts, media queries, drawer state
+  styles/                global CSS split by area (base tokens, stage, panels, explainer, flashy)
 ```
 
-The render loop never goes through React: `Engine` draws every frame with three.js and publishes
+The render loop never goes through React: the active view draws every frame with three.js and `Engine` publishes
 a UI snapshot about five times a second through a small store that components read with
 `useSyncExternalStore`.
 

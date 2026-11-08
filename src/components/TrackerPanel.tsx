@@ -4,7 +4,6 @@ import { useEngine } from "../engine/EngineContext";
 import type { Market } from "../engine/Market";
 import type { TrackerView } from "../engine/snapshot";
 import { fmtHbar, fmtInt, fmtTs, fmtTsNs, fmtUsd } from "../lib/format";
-import { Panel } from "./Panel";
 
 interface Step {
     title: string;
@@ -109,47 +108,34 @@ function stepClasses(steps: Step[]) {
     });
 }
 
-interface Props {
-    collapsed: boolean;
-    onToggle: () => void;
-}
-
-export function TrackerPanel({ collapsed, onToggle }: Props) {
+/** One transaction followed from signing to its block. */
+export function TrackerPanel() {
     const { engine, ui } = useEngine();
     const view = ui.tracker;
-    const steps = view ? journeySteps(view, engine.market) : [];
+    if (!view) return <p className="empty">Waiting for the next mainnet transaction…</p>;
+    const steps = journeySteps(view, engine.market);
     const classes = stepClasses(steps);
     return (
-        <Panel
-            title="Transaction journey"
-            className="tracker"
-            collapsed={collapsed}
-            onToggle={onToggle}>
-            {!view ? (
-                <p className="empty">Waiting for the next mainnet transaction…</p>
-            ) : (
-                <>
-                    <div className="tx-head">
-                        <div className="star">★</div>
-                        <div>
-                            <b>{view.tx.id}</b>
-                            <small>
-                                {view.tx.kind.key} · {engine.market.txText(view.tx)}
-                            </small>
-                            {view.tx.memo && <small className="memo">memo: {view.tx.memo}</small>}
-                        </div>
-                    </div>
-                    <ol className="steps">
-                        {steps.map((s, i) => (
-                            <li key={s.title} className={classes[i]}>
-                                <span className="ic">{s.opaque ? "?" : s.done ? "✓" : i + 1}</span>
-                                <h3>{s.title}</h3>
-                                <p>{s.body}</p>
-                            </li>
-                        ))}
-                    </ol>
-                </>
-            )}
-        </Panel>
+        <>
+            <div className="tx-head">
+                <div className="star">★</div>
+                <div>
+                    <b>{view.tx.id}</b>
+                    <small>
+                        {view.tx.kind.key} · {engine.market.txText(view.tx)}
+                    </small>
+                    {view.tx.memo && <small className="memo">memo: {view.tx.memo}</small>}
+                </div>
+            </div>
+            <ol className="steps">
+                {steps.map((s, i) => (
+                    <li key={s.title} className={classes[i]}>
+                        <span className="ic">{s.opaque ? "?" : s.done ? "✓" : i + 1}</span>
+                        <h3>{s.title}</h3>
+                        <p>{s.body}</p>
+                    </li>
+                ))}
+            </ol>
+        </>
     );
 }

@@ -4,8 +4,8 @@ import { useEngine } from "../engine/EngineContext";
 import type { ChartData } from "../engine/snapshot";
 import { trunc } from "../lib/format";
 
-function summaries(d: ChartData | null) {
-    if (!d || !d.total) return { rate: "—", mix: "no transactions", node: "—" };
+function summaries(d: ChartData) {
+    if (!d.total) return { rate: "—", mix: "no transactions", node: "—" };
     const top = d.mix.reduce((a, b) => (b.count > a.count ? b : a));
     const best = d.perNode.reduce((a, b) => (b.count > a.count ? b : a));
     const peak = Math.max(0.5, ...d.rate);
@@ -17,7 +17,7 @@ function summaries(d: ChartData | null) {
     };
 }
 
-/** Three small live charts over the tower's 2-minute window. */
+/** Three small live charts over the 2-minute window; only shown when switched on. */
 export function ChartsStrip() {
     const { ui } = useEngine();
     const rate = useRef<HTMLCanvasElement>(null);
@@ -34,9 +34,10 @@ export function ChartsStrip() {
         if (nodes.current) drawNodes(nodes.current, data, fx, light);
     }, [data, fx, light]);
 
+    if (!data) return null;
     const s = summaries(data);
     return (
-        <div className="hud charts glass">
+        <div className="charts glass">
             <div className="chart">
                 <small>
                     tx / s · 2 min <b>{s.rate}</b>

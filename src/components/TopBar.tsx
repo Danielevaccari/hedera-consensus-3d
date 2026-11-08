@@ -1,57 +1,69 @@
 import { useEngine } from "../engine/EngineContext";
-import { fmtInt, fmtStake } from "../lib/format";
+import type { DrawerState } from "../hooks/useDrawerState";
+import { fmtInt } from "../lib/format";
+import { InfoPopover } from "./InfoPopover";
+import { ViewSwitch } from "./ViewSwitch";
 
-const DESCRIPTION =
-    "Each column is one real consensus node. Every dot is a real transaction, placed in the column of the node it was submitted to at its consensus timestamp. Time flows downward.";
-
-export function TopBar() {
-    const { ui } = useEngine();
+/** Slim bar over the 3D view: title, live badge, view switch, four key stats and a few tools. */
+export function TopBar({ drawer }: { drawer: DrawerState }) {
+    const { engine, ui } = useEngine();
     const s = ui.stats;
     const dash = "—";
-    const stats: { value: string; label: string; title?: string }[] = [
-        { value: s ? String(s.nodes) : dash, label: "nodes" },
-        { value: s ? fmtStake(s.totalStake) : dash, label: "stake" },
-        {
-            value: s ? String(s.minSMNodes) : dash,
-            label: ">⅔ stake",
-            title: "Minimum number of nodes holding more than 2/3 of the stake",
-        },
-        {
-            value: s?.pingShare != null ? `${Math.round(s.pingShare * 100)}%` : dash,
-            label: "pings",
-            title: "Share of transactions in the last 2 minutes that are Hedera's own health-check pings",
-        },
-        {
-            value: s ? s.tps.toFixed(1) : dash,
-            label: ui.options.hidePings ? "real tx/s" : "tx/s",
-            title: "Transactions per second over the last 30 s",
-        },
+    const stats = [
+        { value: s ? s.tps.toFixed(1) : dash, label: ui.options.hidePings ? "real tx/s" : "tx/s" },
         { value: s?.latestBlock != null ? `#${fmtInt(s.latestBlock)}` : dash, label: "block" },
-        {
-            value: s ? `${s.lag.toFixed(1)}s` : dash,
-            label: "behind",
-            title: "How far this view runs behind real time",
-        },
-        { value: s ? s.clock : "--:--:--", label: "consensus clock" },
+        { value: s ? `${s.lag.toFixed(1)}s` : dash, label: "behind" },
+        { value: s ? s.clock : "--:--:--", label: "clock" },
     ];
+    const dark = ui.options.theme === "dark";
+    const themeLabel = dark ? "Switch to the light theme" : "Switch to the dark theme";
     return (
-        <header className="hud hud-top glass">
-            <div className="brand" title={DESCRIPTION}>
+        <header className="topbar glass">
+            <div className="brand">
                 <h1>
-                    <span>Hedera mainnet</span> consensus, live in 3D
+                    <span>Hedera</span> <span className="sm-hide">mainnet</span>
                 </h1>
-                <span className={`live${ui.online ? "" : " bad"}`}>
+                <span
+                    className={`live${ui.online ? "" : " bad"}`}
+                    role="status"
+                    aria-label={ui.online ? "Live mainnet data" : "Mirror node unreachable"}>
                     <i />
-                    {ui.online ? "LIVE" : "RECONNECTING"}
+                    <b>{ui.online ? "LIVE" : "RETRYING"}</b>
                 </span>
             </div>
+            <ViewSwitch />
             <div className="stats">
                 {stats.map(st => (
-                    <div className="stat" key={st.label} title={st.title}>
+                    <div className="stat" key={st.label}>
                         <b>{st.value}</b>
                         <small>{st.label}</small>
                     </div>
                 ))}
+            </div>
+            <div className="tools">
+                <InfoPopover />
+                <button
+                    type="button"
+                    className="btn icon"
+                    title={themeLabel}
+                    aria-label={themeLabel}
+                    onClick={() => engine.toggleTheme()}>
+                    {dark ? "☀" : "☾"}
+                </button>
+                <button
+                    type="button"
+                    className={`btn details${drawer.open && !drawer.narrow ? " on" : ""}`}
+                    aria-expanded={drawer.open}
+                    aria-controls="drawer"
+                    onClick={() => {
+                        if (drawer.narrow)
+                            document
+                                .getElementById("drawer")
+                                ?.scrollIntoView({ behavior: "smooth" });
+                        else drawer.setOpen(!drawer.open);
+                    }}>
+                    {drawer.narrow ? "↓" : "☰"} <span className="lbl">Details</span>
+                </button>
             </div>
         </header>
     );

@@ -7,6 +7,7 @@ import { fmtHbar, fmtInt, fmtStake, fmtTs, fmtTsNs, fmtUsd } from "../lib/format
 function NodeContent({ nd }: { nd: HNode }) {
     const { ui } = useEngine();
     const total = ui.stats?.totalStake || 1;
+    const globe = ui.options.view === "globe";
     return (
         <>
             <h4>
@@ -17,19 +18,25 @@ function NodeContent({ nd }: { nd: HNode }) {
                 <dt>hosted by</dt>
                 <dd>{nd.host}</dd>
                 <dt>location</dt>
-                <dd>{nd.loc || "—"}</dd>
+                <dd>
+                    {nd.loc || "—"}
+                    {globe && nd.loc ? " (approx.)" : ""}
+                </dd>
                 <dt>node id</dt>
                 <dd>{nd.id}</dd>
                 <dt>stake</dt>
                 <dd>
                     {fmtStake(nd.stake)} · {((nd.stake / total) * 100).toFixed(2)}%
                 </dd>
-                <dt>tx in view</dt>
-                <dd>{nd.count} submitted via this node</dd>
+                <dt>{globe ? "tx received" : "tx in view"}</dt>
+                <dd>
+                    {nd.count} {globe ? "in the last 2 min" : "submitted via this node"}
+                </dd>
             </dl>
             <div className="note">
                 Every node holds a full copy of the hashgraph and computes the same order. A bigger
-                sphere means more stake, which means more voting weight.
+                {globe ? " dot" : " sphere"} means more stake, which means more voting weight.
+                {globe && " The spike shows how many transactions clients sent to this node."}
             </div>
         </>
     );
@@ -84,8 +91,8 @@ function TxContent({ tx }: { tx: Tx }) {
             </dl>
             <div className="note">
                 {tx === ui.tracker?.tx
-                    ? "This transaction is tracked in the journey panel."
-                    : "Click to follow this transaction in the journey panel."}
+                    ? "This transaction is followed in the Journey tab."
+                    : "Click to follow this transaction in the Journey tab."}
             </div>
         </>
     );

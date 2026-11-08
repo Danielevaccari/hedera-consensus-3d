@@ -10,6 +10,7 @@ import {
     Group,
     Mesh,
     MeshBasicMaterial,
+    NormalBlending,
     Points,
     PointsMaterial,
     ShaderMaterial,
@@ -54,20 +55,25 @@ void main() {
 
 const NEBULA_FRAGMENT = /* glsl */ `
 uniform float t;
+uniform float light;
 varying vec3 vP;
 void main() {
     float a = 0.5 + 0.5 * sin(vP.x * 3.1 + t * 0.05) * sin(vP.y * 2.3 - t * 0.04);
     float b = 0.5 + 0.5 * sin(vP.z * 2.7 - t * 0.03 + vP.y * 1.7);
-    vec3 col = mix(vec3(0.008, 0.01, 0.035), vec3(0.075, 0.02, 0.14), a * a);
-    col = mix(col, vec3(0.01, 0.08, 0.13), b * b * 0.55);
-    gl_FragColor = vec4(col, 1.0);
+    // dark: deep space, linear values (the bloom pipeline converts them to sRGB)
+    vec3 d = mix(vec3(0.008, 0.01, 0.035), vec3(0.075, 0.02, 0.14), a * a);
+    d = mix(d, vec3(0.01, 0.08, 0.13), b * b * 0.55);
+    // light: pastel wash, final display values (no bloom pass on a light background)
+    vec3 l = mix(vec3(0.95, 0.965, 0.99), vec3(0.89, 0.85, 0.99), a * a);
+    l = mix(l, vec3(0.83, 0.95, 0.98), b * b * 0.7);
+    gl_FragColor = vec4(mix(d, l, light), 1.0);
 }`;
 
 export function createBackdrop() {
     const group = new Group();
     const stars = createStars();
     const nebulaMat = new ShaderMaterial({
-        uniforms: { t: { value: 0 } },
+        uniforms: { t: { value: 0 }, light: { value: 0 } },
         vertexShader: NEBULA_VERTEX,
         fragmentShader: NEBULA_FRAGMENT,
         side: BackSide,
@@ -91,6 +97,14 @@ export function createBackdrop() {
     return {
         group,
         nowDisc,
+        /** Dark: stars + deep nebula + additive glow. Light: pastel nebula, no stars, normal blending. */
+        setTheme(light: boolean) {
+            stars.visible = !light;
+            nebulaMat.uniforms.light.value = light ? 1 : 0;
+            const m = nowDisc.material;
+            m.blending = light ? NormalBlending : AdditiveBlending;
+            m.needsUpdate = true;
+        },
         tick(realT: number, dt: number) {
             stars.rotation.y += dt * 0.004;
             nebulaMat.uniforms.t.value = realT;

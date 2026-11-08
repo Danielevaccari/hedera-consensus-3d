@@ -1,12 +1,15 @@
-// Owns the live model, the mirror-node feed and the 3D scene, runs the frame loop, and publishes
-// what the React UI needs through two stores: a UI snapshot (~5 Hz) and the hover target.
+// Owns the live model, the mirror-node feed and the 3D views, runs the frame loop, and publishes
+// what the React UI needs through three stores: a UI snapshot (~5 Hz), the hover target, and a
+// "focus" counter that ticks when the visitor picks a transaction to follow.
 import { STORAGE_KEYS, UI_INTERVAL } from "../config";
 import { AbortedError, MirrorClient } from "../api/MirrorClient";
-import { isLowPowerDevice, prefersReducedMotion } from "../lib/device";
 import { readStorage, writeStorage } from "../lib/storage";
 import { Store } from "../lib/store";
+import { GlobeView } from "../scene/globe/GlobeView";
 import type { Theme } from "../scene/palette";
-import { SceneView } from "../scene/SceneView";
+import { createRenderer } from "../scene/renderer";
+import { TowerView } from "../scene/TowerView";
+import type { View3D, ViewId } from "../scene/View3D";
 import { errorMessage, Feed } from "./Feed";
 import { LiveState } from "./LiveState";
 import { Logger } from "./Logger";
@@ -29,20 +32,32 @@ export interface HoverState {
     y: number;
 }
 
+const initialView = (): ViewId => {
+    const fromUrl = new URLSearchParams(location.search).get("view");
+    const saved = fromUrl ?? readStorage(STORAGE_KEYS.view);
+    return saved === "globe" ? "globe" : "tower";
+};
+
 export class Engine {
     readonly market = new Market();
     readonly ui: Store<UiSnapshot>;
     readonly hover = new Store<HoverState | null>(null);
+    /** increments whenever the visitor picks a transaction to follow (UI can reveal the journey) */
+    readonly focus = new Store<number>(0);
 
     private logger: Logger;
     private state: LiveState;
     private client = new MirrorClient();
     private feed: Feed;
-    private scene: SceneView;
+    private renderer;
+    private tower: TowerView;
+    private globe: GlobeView;
+    private view: ViewId;
     private phase: Phase = "loading";
     private error: string | null = null;
     private paused = false;
     private present = false;
+    private charts: boolean;
     private raf = 0;
     private last = 0;
     private uiTimer = 0;
@@ -51,7 +66,7 @@ export class Engine {
     private intersectionObserver: IntersectionObserver;
     private onScreen = true;
     private theme: Theme;
-    /** the visitor's flashy/calm choice; flashy only shows with the dark theme */
+    /** the visitor's flashy/calm choice; effects adapt to the theme */
     private fxPref: boolean;
     private pointer: { x: number; y: number } | null = null;
     private pointerDirty = false;
@@ -65,23 +80,25 @@ export class Engine {
         this.logger = new Logger(() => this.state.clock());
         this.state = new LiveState(this.market, this.logger);
         this.feed = new Feed(this.client, this.state, this.market, this.logger);
-        this.scene = new SceneView(canvas, this.state, this.market);
+        this.renderer = createRenderer(canvas);
+        this.tower = new TowerView(this.renderer, canvas, this.state, this.market);
+        this.globe = new GlobeView(this.renderer, canvas, this.state);
 
         const pings = readStorage(STORAGE_KEYS.pings);
         if (pings) this.state.hidePings = pings === "hidden";
-        // a saved choice wins; otherwise flashy only where motion is welcome and the device can take it
-        const style = readStorage(STORAGE_KEYS.style);
-        const lightDefault = prefersReducedMotion() || isLowPowerDevice();
-        this.fxPref = style ? style === "flashy" : !lightDefault;
+        this.fxPref = readStorage(STORAGE_KEYS.style) === "flashy"; // calm unless chosen
+        this.charts = readStorage(STORAGE_KEYS.charts) === "on";
         // the inline script in index.html has already applied the saved theme to <html>
         this.theme = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
-        this.scene.setTheme(this.theme);
-        this.applyFx();
+        this.view = initialView();
+        for (const v of [this.tower, this.globe]) {
+            v.setTheme(this.theme);
+            v.setFx(this.fxPref);
+        }
+        this.activate();
 
         this.ui = new Store(this.snapshot());
-        this.resizeObserver = new ResizeObserver(() =>
-            this.scene.resize(viewport.clientWidth, viewport.clientHeight),
-        );
+        this.resizeObserver = new ResizeObserver(() => this.resize(viewport));
         this.resizeObserver.observe(viewport);
         // stop drawing while the 3D view is scrolled out of sight (the data keeps updating)
         this.intersectionObserver = new IntersectionObserver(([entry]) => {
@@ -91,6 +108,26 @@ export class Engine {
         this.bindPointer();
         this.bindFullscreen();
         void this.start();
+    }
+
+    private get active(): View3D {
+        return this.view === "globe" ? this.globe : this.tower;
+    }
+
+    private resize(viewport: HTMLElement) {
+        const w = viewport.clientWidth;
+        const h = viewport.clientHeight;
+        // a zero-size framebuffer is invalid; happens briefly while the layout switches
+        if (!w || !h) return;
+        this.renderer.setSize(w, h, false);
+        this.tower.resize(w, h);
+        this.globe.resize(w, h);
+    }
+
+    /** Only the shown view reacts to the pointer. */
+    private activate() {
+        this.tower.setActive(this.view === "tower");
+        this.globe.setActive(this.view === "globe");
     }
 
     // =================================================================
@@ -114,7 +151,13 @@ export class Engine {
         }
         if (this.disposed) return;
         this.state.booted = true;
-        this.scene.buildNodes();
+        this.tower.buildNodes();
+        this.globe.buildNodes();
+        if (this.globe.unmapped.length)
+            this.logger.log(
+                "warn",
+                `**Location not mapped** for ${this.globe.unmapped.map(n => `${n.acct} (${n.loc || "no location"})`).join(", ")}: shown in the panels but not on the globe.`,
+            );
         this.phase = "live";
         this.publish();
         this.last = performance.now();
@@ -130,7 +173,9 @@ export class Engine {
         this.resizeObserver.disconnect();
         this.intersectionObserver.disconnect();
         for (const c of this.cleanups) c();
-        this.scene.dispose();
+        this.tower.dispose();
+        this.globe.dispose();
+        this.renderer.dispose();
     }
 
     private frame = (now: number) => {
@@ -140,14 +185,14 @@ export class Engine {
         state.realT += dt;
         if (!this.paused) state.advance(dt);
         if (this.onScreen) {
-            this.scene.frame(dt);
+            this.active.frame(dt);
             this.updateHover();
         }
         this.uiTimer += dt;
         if (this.uiTimer > UI_INTERVAL) {
             this.uiTimer = 0;
             if (!this.paused) state.autoAdvanceTracking();
-            this.scene.removeBlockLabels(state.prune());
+            this.tower.removeBlockLabels(state.prune());
             this.publish();
         }
         this.raf = requestAnimationFrame(this.frame);
@@ -160,11 +205,13 @@ export class Engine {
     get options(): Options {
         return {
             paused: this.paused,
-            fx: this.scene.fx,
+            fx: this.fxPref,
             theme: this.theme,
+            view: this.view,
             hidePings: this.state.hidePings,
-            unrolled: this.scene.unrolled,
-            autoRotate: this.scene.autoRotate,
+            unrolled: this.tower.unrolled,
+            autoRotate: this.active.autoRotate,
+            charts: this.charts,
             present: this.present,
         };
     }
@@ -181,8 +228,8 @@ export class Engine {
             ledger: live ? computeLedger(s) : [],
             log: this.logger.entries,
             tracker: live ? computeTracker(s) : null,
-            // the charts strip is hidden while presenting
-            charts: live && !this.present ? computeCharts(s) : null,
+            // the charts strip is optional and hidden while presenting
+            charts: live && this.charts && !this.present ? computeCharts(s) : null,
         };
     }
 
@@ -199,10 +246,23 @@ export class Engine {
         this.publish();
     }
 
+    setView(view: ViewId) {
+        if (view === this.view) return;
+        this.view = view;
+        writeStorage(STORAGE_KEYS.view, view);
+        const url = new URL(location.href);
+        url.searchParams.set("view", view);
+        history.replaceState(null, "", url);
+        this.hover.set(null);
+        this.activate();
+        this.publish();
+    }
+
     toggleFx() {
         this.fxPref = !this.fxPref;
         writeStorage(STORAGE_KEYS.style, this.fxPref ? "flashy" : "calm");
-        this.applyFx();
+        this.tower.setFx(this.fxPref);
+        this.globe.setFx(this.fxPref);
         this.publish();
     }
 
@@ -210,23 +270,24 @@ export class Engine {
         this.theme = this.theme === "dark" ? "light" : "dark";
         document.documentElement.dataset.theme = this.theme;
         writeStorage(STORAGE_KEYS.theme, this.theme);
-        this.scene.setTheme(this.theme);
-        this.applyFx();
+        this.tower.setTheme(this.theme);
+        this.globe.setTheme(this.theme);
         this.publish();
     }
 
-    /** Bloom, neon and additive light trails need a dark background. */
-    private applyFx() {
-        this.scene.setFx(this.fxPref && this.theme === "dark");
+    toggleCharts() {
+        this.charts = !this.charts;
+        writeStorage(STORAGE_KEYS.charts, this.charts ? "on" : "off");
+        this.publish();
     }
 
     toggleUnroll() {
-        this.scene.unrolled = !this.scene.unrolled;
+        this.tower.unrolled = !this.tower.unrolled;
         this.publish();
     }
 
     toggleAutoRotate() {
-        this.scene.autoRotate = !this.scene.autoRotate;
+        this.active.autoRotate = !this.active.autoRotate;
         this.publish();
     }
 
@@ -250,11 +311,14 @@ export class Engine {
         s.autoTrack = true;
         // nothing queued yet: take the next one that arrives
         if (!s.pickNext() && s.tracked) s.trackedDoneAt = -1e9;
+        this.focus.set(this.focus.get() + 1);
         this.publish();
     }
 
+    /** The visitor picked this transaction (canvas click or ledger row). */
     track(tx: Tx) {
         this.state.setTracked(tx, true);
+        this.focus.set(this.focus.get() + 1);
         this.publish();
     }
 
@@ -320,7 +384,7 @@ export class Engine {
         if (!this.pointerDirty && !this.hover.get()) return;
         this.pointerDirty = false;
         const p = this.pointer;
-        const target = p && !this.present ? this.scene.pick(p.x, p.y) : null;
+        const target = p && !this.present ? this.active.pick(p.x, p.y) : null;
         this.canvas.style.cursor = target ? "pointer" : "";
         const prev = this.hover.get();
         if (!target || !p) {

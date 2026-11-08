@@ -52,10 +52,18 @@ export function Sources() {
                 cards above explain those steps but the 3D view does not draw them. The exact moment
                 a transaction reached its node is not public either. Its fly-in animation is timed
                 to end at its consensus timestamp. Health-check pings (transactions whose memo names
-                Hedera&apos;s mirror-node monitor) are hidden by default and can be shown with the
-                Pings button. USD values use the mirror node&apos;s current HBAR exchange rate, and
+                Hedera&apos;s mirror-node monitor) are hidden by default and can be shown in the
+                Options menu. USD values use the mirror node&apos;s current HBAR exchange rate, and
                 token names come from the mirror node&apos;s token records; token transfers have no
                 USD price, so whale alerts cover HBAR transfers only.
+            </p>
+            <p>
+                <b>About the globe.</b> Node positions are approximate: they come from the host city
+                in each node&apos;s mirror-node description (a state or region centre where only
+                that is given), and nodes in the same city are spread apart slightly so each stays
+                visible. The arcs connect each transaction to the next one in the real consensus
+                order; they are not network paths. Hedera does not publish where clients are, so the
+                globe does not draw that. Land outlines: Natural Earth via the world-atlas package.
             </p>
         </section>
     );

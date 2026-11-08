@@ -1,6 +1,13 @@
-/* ---------- flashy mode (body.fx): glow, neon and motion on top of the calm design ---------- */
-body.fx .stage {
-    background: radial-gradient(1200px 700px at 50% 35%, #1b1150 0%, #0a0d2b 50%, var(--bg) 100%);
+/*
+ * Flashy mode (body.fx): glow, colour and motion on top of the calm design.
+ * The dark theme gets neon on deep space; the light theme gets pastel washes and soft coloured
+ * shadows (glow doesn't read on white, so it is replaced rather than switched off).
+ */
+body.fx .view-col {
+    background: radial-gradient(1200px 700px at 50% 35%, #1b1150 0%, #0a0d2b 50%, #03050b 100%);
+}
+:root:not([data-theme="dark"]) body.fx .view-col {
+    background: radial-gradient(1200px 700px at 50% 35%, #ffffff 0%, #f1ecff 48%, #dff1fb 100%);
 }
 body.fx .brand h1 span {
     background: linear-gradient(90deg, var(--cyan), var(--violet), var(--pink), var(--cyan));
@@ -27,6 +34,8 @@ body.fx .brand h1 span {
         box-shadow: inset 3px 0 0 var(--cyan);
     }
 }
+
+/* panels floating over the view */
 body.fx .glass {
     border-color: rgba(167, 139, 250, 0.32);
     box-shadow:
@@ -35,14 +44,25 @@ body.fx .glass {
         0 0 30px rgba(124, 58, 237, 0.22),
         inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
-body.fx .live i,
-body.fx .card h2 .dot {
+:root:not([data-theme="dark"]) body.fx .glass {
+    border-color: rgba(124, 58, 237, 0.28);
+    box-shadow:
+        0 2px 12px rgba(124, 58, 237, 0.14),
+        0 0 0 1px rgba(8, 145, 178, 0.08);
+}
+body.fx .live i {
     box-shadow: 0 0 10px var(--green);
     animation: blink 1.6s infinite;
 }
-body.fx .live.bad i,
-body.fx .card h2 .dot.bad {
+body.fx .live.bad i {
     box-shadow: 0 0 10px var(--red);
+}
+body.fx .seg button.on {
+    background: linear-gradient(120deg, var(--cyan), var(--violet));
+    color: #fff;
+}
+body.fx .tabs button.on {
+    border-bottom-color: var(--violet);
 }
 body.fx .steps li.done .ic {
     box-shadow: 0 0 12px rgba(74, 222, 128, 0.55);
@@ -66,8 +86,14 @@ body.fx .whale {
 body.fx .stat b {
     text-shadow: 0 0 14px rgba(103, 232, 249, 0.45);
 }
+:root:not([data-theme="dark"]) body.fx .stat b {
+    text-shadow: none;
+}
 body.fx .chart canvas {
     filter: drop-shadow(0 0 5px rgba(103, 232, 249, 0.35));
+}
+:root:not([data-theme="dark"]) body.fx .chart canvas {
+    filter: drop-shadow(0 1px 3px rgba(8, 145, 178, 0.3));
 }
 body.fx .btn.primary {
     box-shadow: 0 0 18px rgba(34, 211, 238, 0.35);
@@ -75,24 +101,17 @@ body.fx .btn.primary {
 body.fx .btn.gold {
     box-shadow: 0 0 18px rgba(253, 224, 71, 0.3);
 }
+:root:not([data-theme="dark"]) body.fx .btn.primary {
+    box-shadow: 0 2px 10px rgba(8, 145, 178, 0.28);
+}
+:root:not([data-theme="dark"]) body.fx .btn.gold {
+    box-shadow: 0 2px 10px rgba(217, 119, 6, 0.25);
+}
 body.fx .sw.blk {
     box-shadow: 0 0 8px var(--cyan);
 }
 body.fx .sw.now {
     box-shadow: 0 0 8px var(--gold);
-}
-body.fx .fx-toggle {
-    background: linear-gradient(
-        120deg,
-        rgba(244, 114, 182, 0.35),
-        rgba(167, 139, 250, 0.35),
-        rgba(34, 211, 238, 0.35),
-        rgba(244, 114, 182, 0.35)
-    );
-    background-size: 300% 100%;
-    border-color: rgba(244, 114, 182, 0.65);
-    box-shadow: 0 0 22px rgba(244, 114, 182, 0.4);
-    animation: sheen 4s linear infinite;
 }
 @media (prefers-reduced-motion: reduce) {
     body.fx * {

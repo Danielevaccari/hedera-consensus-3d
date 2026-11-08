@@ -2,6 +2,7 @@ import {
     AdditiveBlending,
     CanvasTexture,
     DynamicDrawUsage,
+    FrontSide,
     InstancedBufferAttribute,
     InstancedMesh,
     MeshBasicMaterial,
@@ -11,12 +12,14 @@ import {
     SRGBColorSpace,
     type BufferGeometry,
     type Scene,
+    type Side,
 } from "three";
 
 interface InstancedOpts {
     transparent?: boolean;
     additive?: boolean;
     fog?: boolean;
+    side?: Side;
 }
 
 /** An instanced mesh with per-instance colours, rewritten every frame. */
@@ -32,6 +35,7 @@ export function makeInstanced(
         blending: opts.additive ? AdditiveBlending : NormalBlending,
         depthWrite: !opts.transparent,
         fog: opts.fog ?? true,
+        side: opts.side ?? FrontSide,
     });
     const m = new InstancedMesh(geo, mat, cap);
     m.instanceMatrix.setUsage(DynamicDrawUsage);
