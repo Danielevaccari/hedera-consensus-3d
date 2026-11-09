@@ -21,6 +21,7 @@ export function InfoPopover() {
             s?.pingShare != null ? `${Math.round(s.pingShare * 100)}%` : dash,
         ],
         ["Transactions / s (30 s)", s ? s.tps.toFixed(1) : dash],
+        ["Since you opened this page", s ? `${fmtInt(s.sinceOpen)} tx` : dash],
         ["Latest block", s?.latestBlock != null ? `#${fmtInt(s.latestBlock)}` : dash],
         ["Behind real time", s ? `${s.lag.toFixed(1)} s` : dash],
         ["Consensus clock", s ? s.clock : "--:--:--"],

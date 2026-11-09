@@ -25,7 +25,7 @@ import type { EffectComposer } from "three/addons/postprocessing/EffectComposer.
 import { CFG, FADE } from "../config";
 import type { LiveState } from "../engine/LiveState";
 import type { Market } from "../engine/Market";
-import type { Hover, Tx } from "../engine/types";
+import type { Hover, HNode, Tx } from "../engine/types";
 import { fmtInt, trunc } from "../lib/format";
 import { createBackdrop } from "./backdrop";
 import {
@@ -39,8 +39,10 @@ import {
 import { LineBuf } from "./LineBuf";
 import { PALETTES, type Palette, type Theme } from "./palette";
 import { createComposer } from "./renderer";
-import type { View3D } from "./View3D";
+import type { MorphPoint, MorphSample, View3D } from "./View3D";
 
+/** how far the tilt shifts the picture at most, in CSS pixels */
+const PARALLAX_PX = 14;
 const TX_CAP = 8000;
 const DOT_CAP = 3000;
 const SHOCK_CAP = 600;
@@ -88,6 +90,7 @@ export class TowerView implements View3D {
     private colX = new Float32Array(1);
     private colZ = new Float32Array(1);
     private fitted = false;
+    private size = { w: 1, h: 1 };
     private morph = 0;
     private morphTarget = 0;
     private camTween: { from: Vector3; to: Vector3; t: number } | null = null;
@@ -264,7 +267,15 @@ export class TowerView implements View3D {
         }
     }
 
+    /** Shifts the picture a few pixels with the phone's tilt (x and y in -1..1). */
+    setParallax(x: number, y: number) {
+        const { w, h } = this.size;
+        if (x === 0 && y === 0) this.camera.clearViewOffset();
+        else this.camera.setViewOffset(w, h, x * PARALLAX_PX, y * PARALLAX_PX, w, h);
+    }
+
     resize(w: number, h: number) {
+        this.size = { w, h };
         this.composer.setPixelRatio(this.renderer.getPixelRatio());
         this.composer.setSize(w, h);
         for (const lb of this.lines) lb.setResolution(w, h);
@@ -736,6 +747,37 @@ export class TowerView implements View3D {
             }
         }
         return best;
+    }
+
+    /** Screen positions of the nodes and the newest transactions, for the view-switch animation. */
+    sample(limit: number): MorphSample {
+        const W = this.canvas.clientWidth;
+        const H = this.canvas.clientHeight;
+        const v = this.v3;
+        const light = this.pal.theme === "light";
+        const point = (x: number, y: number, z: number, color: string): MorphPoint => {
+            v.set(x, y, z).project(this.camera);
+            return { x: ((v.x + 1) / 2) * W, y: ((1 - v.y) / 2) * H, color, hidden: v.z > 1 };
+        };
+        const nodes = new Map<HNode, MorphPoint>();
+        for (const nd of this.state.nodes)
+            nodes.set(
+                nd,
+                point(
+                    this.colX[nd.i],
+                    CFG.NODE_Y,
+                    this.colZ[nd.i],
+                    this.fx ? nd.hexFx : this.pal.nodeHex(nd),
+                ),
+            );
+        const txs: MorphSample["txs"] = [];
+        for (const tx of this.visible) {
+            if (txs.length >= limit) break; // newest first
+            const p = point(tx.px, tx.py, tx.pz, light ? tx.kind.hexLight : tx.kind.hex);
+            if (!p.hidden && p.x > -20 && p.x < W + 20 && p.y > -20 && p.y < H + 20)
+                txs.push({ ...p, tx });
+        }
+        return { nodes, txs };
     }
 
     dispose() {

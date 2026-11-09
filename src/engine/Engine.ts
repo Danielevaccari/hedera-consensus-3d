@@ -3,13 +3,15 @@
 // "focus" counter that ticks when the visitor picks a transaction to follow.
 import { STORAGE_KEYS, UI_INTERVAL } from "../config";
 import { AbortedError, MirrorClient } from "../api/MirrorClient";
+import { prefersReducedMotion } from "../lib/device";
 import { readStorage, writeStorage } from "../lib/storage";
 import { Store } from "../lib/store";
 import { GlobeView } from "../scene/globe/GlobeView";
+import { buildMorphParticles, MorphOverlay } from "../scene/MorphOverlay";
 import type { Theme } from "../scene/palette";
 import { createRenderer } from "../scene/renderer";
 import { TowerView } from "../scene/TowerView";
-import type { View3D, ViewId } from "../scene/View3D";
+import type { MorphSample, View3D, ViewId } from "../scene/View3D";
 import { errorMessage, Feed } from "./Feed";
 import { LiveState } from "./LiveState";
 import { Logger } from "./Logger";
@@ -31,6 +33,9 @@ export interface HoverState {
     x: number;
     y: number;
 }
+
+/** how many recent transactions fly between the views (the nodes always do) */
+const MORPH_TXS = 160;
 
 const initialView = (): ViewId => {
     const fromUrl = new URLSearchParams(location.search).get("view");
@@ -62,6 +67,7 @@ export class Engine {
     private last = 0;
     private uiTimer = 0;
     private disposed = false;
+    private morph: MorphOverlay;
     private resizeObserver: ResizeObserver;
     private intersectionObserver: IntersectionObserver;
     private onScreen = true;
@@ -72,6 +78,8 @@ export class Engine {
     private pointerDirty = false;
     private downAt: { x: number; y: number } | null = null;
     private cleanups: (() => void)[] = [];
+    /** phone tilt: where it is now, where it is heading (each -1..1) */
+    private tilt = { x: 0, y: 0, tx: 0, ty: 0 };
 
     constructor(
         private canvas: HTMLCanvasElement,
@@ -83,6 +91,7 @@ export class Engine {
         this.renderer = createRenderer(canvas);
         this.tower = new TowerView(this.renderer, canvas, this.state, this.market);
         this.globe = new GlobeView(this.renderer, canvas, this.state);
+        this.morph = new MorphOverlay(viewport);
 
         const pings = readStorage(STORAGE_KEYS.pings);
         if (pings) this.state.hidePings = pings === "hidden";
@@ -107,6 +116,7 @@ export class Engine {
         this.intersectionObserver.observe(viewport);
         this.bindPointer();
         this.bindFullscreen();
+        this.bindTilt();
         void this.start();
     }
 
@@ -122,6 +132,7 @@ export class Engine {
         this.renderer.setSize(w, h, false);
         this.tower.resize(w, h);
         this.globe.resize(w, h);
+        this.morph.resize(w, h);
     }
 
     /** Only the shown view reacts to the pointer. */
@@ -173,6 +184,7 @@ export class Engine {
         this.resizeObserver.disconnect();
         this.intersectionObserver.disconnect();
         for (const c of this.cleanups) c();
+        this.morph.dispose();
         this.tower.dispose();
         this.globe.dispose();
         this.renderer.dispose();
@@ -188,6 +200,8 @@ export class Engine {
             this.active.frame(dt);
             this.updateHover();
         }
+        this.morph.tick(now);
+        this.updateTilt(dt);
         this.uiTimer += dt;
         if (this.uiTimer > UI_INTERVAL) {
             this.uiTimer = 0;
@@ -246,8 +260,19 @@ export class Engine {
         this.publish();
     }
 
+    /**
+     * Switches view. While live, the old view's last frame fades out as the nodes and recent
+     * transactions fly to where they are in the new one.
+     */
     setView(view: ViewId) {
         if (view === this.view) return;
+        const animate = this.phase === "live" && !prefersReducedMotion();
+        let before: MorphSample | null = null;
+        if (animate) {
+            this.active.frame(0); // a fresh frame, so the copy below is current
+            this.morph.capture(this.canvas);
+            before = this.active.sample(MORPH_TXS);
+        }
         this.view = view;
         writeStorage(STORAGE_KEYS.view, view);
         const url = new URL(location.href);
@@ -255,6 +280,14 @@ export class Engine {
         history.replaceState(null, "", url);
         this.hover.set(null);
         this.activate();
+        if (before) {
+            this.active.frame(0); // positions in the new view
+            const after = this.active.sample(MORPH_TXS);
+            this.morph.run(
+                buildMorphParticles(before, after),
+                this.fxPref && this.theme === "dark",
+            );
+        }
         this.publish();
     }
 
@@ -369,6 +402,39 @@ export class Engine {
             const h = this.hover.get();
             if (moved <= 5 && h?.target.type === "tx") this.track(h.target.tx);
         });
+    }
+
+    /**
+     * Parallax from the phone's tilt. Only on touch devices, in portrait, and only where the browser
+     * gives orientation events without a permission prompt (iOS asks, so it is left out).
+     */
+    private bindTilt() {
+        type OrientationApi = { requestPermission?: () => Promise<string> };
+        const api = (window as unknown as { DeviceOrientationEvent?: OrientationApi })
+            .DeviceOrientationEvent;
+        if (!api || typeof api.requestPermission === "function") return;
+        if (!matchMedia("(pointer: coarse)").matches || prefersReducedMotion()) return;
+        const clamp = (v: number) => Math.max(-1, Math.min(1, v));
+        const onTilt = (e: DeviceOrientationEvent) => {
+            if (e.gamma == null || !matchMedia("(orientation: portrait)").matches) return;
+            this.tilt.tx = clamp(e.gamma / 25); // left / right
+            this.tilt.ty = clamp(((e.beta ?? 50) - 50) / 25); // towards / away, around a held phone
+        };
+        window.addEventListener("deviceorientation", onTilt);
+        this.cleanups.push(() => window.removeEventListener("deviceorientation", onTilt));
+    }
+
+    /** Eases towards the target tilt and applies it to the shown view. */
+    private updateTilt(dt: number) {
+        const t = this.tilt;
+        if (t.x === t.tx && t.y === t.ty) return;
+        const k = Math.min(1, dt * 6);
+        t.x += (t.tx - t.x) * k;
+        t.y += (t.ty - t.y) * k;
+        if (Math.abs(t.tx - t.x) < 0.002) t.x = t.tx;
+        if (Math.abs(t.ty - t.y) < 0.002) t.y = t.ty;
+        this.tower.setParallax(t.x, t.y);
+        this.globe.setParallax(t.x, t.y);
     }
 
     private bindFullscreen() {

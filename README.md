@@ -25,6 +25,11 @@ about gossip, events, rounds and witnesses, virtual voting, consensus timestamps
 - Transaction journey: follow one transaction from signing to its block
 - Ledger in consensus order, network log, optional live charts (tx/s, type mix, tx per node)
 - Whale alerts for HBAR transfers ≥ $10k, optional hiding of Hedera's health-check pings
+- Switching between Tower and Globe animates: the nodes fly from the ring to their cities (and back)
+  while recent transactions stream between their columns and their node
+- The globe has a real day and night side, driven by the sun's position at the current UTC time
+- A big "transactions since you opened this page" counter greets new visitors
+- A subtle image parallax from tilting a phone (where the browser allows it without a prompt)
 - Presentation mode (`P`)
 - Uncluttered layout: the 3D view fills the screen with one tabbed side drawer; on phones the view
   is the first thing on screen and the drawer sits below it

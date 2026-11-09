@@ -47,6 +47,8 @@ export class LiveState {
     autoTrack = true;
     hidePings = true;
     booted = false;
+    /** transactions that have reached the consensus clock since this page was opened */
+    sinceOpen = 0;
 
     constructor(
         private market: Market,
@@ -210,6 +212,7 @@ export class LiveState {
             tx.landed = true;
             tx.landedReal = booted ? realT : -99;
             const live = booted && this.shown(tx);
+            if (live) this.sinceOpen++;
             if (live && tx.node) tx.node.pulse = realT;
             if (live && market.isWhale(tx)) {
                 tx.whaleAt = realT;

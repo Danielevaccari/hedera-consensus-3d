@@ -38,10 +38,12 @@ import { disposeSprite, makeInstanced, sizeSprite, textSprite, type TextSprite }
 import { LineBuf } from "../LineBuf";
 import { PALETTES, type Palette, type Theme } from "../palette";
 import { createComposer } from "../renderer";
-import type { View3D } from "../View3D";
-import { coordsFor, latLonToUnit } from "./geo";
+import type { MorphSample, View3D } from "../View3D";
+import { coordsFor, latLonToUnit, sunDirection } from "./geo";
 import { buildGraticule, loadCoastlines } from "./land";
 
+/** how far the tilt shifts the picture at most, in CSS pixels */
+const PARALLAX_PX = 14;
 const R = 10;
 const UP = new Vector3(0, 1, 0);
 const Z = new Vector3(0, 0, 1);
@@ -72,6 +74,9 @@ export class GlobeView implements View3D {
     private composer: EffectComposer;
     private backdrop = createBackdrop();
     private fitted = false;
+    private size = { w: 1, h: 1 };
+    private sunAt = -Infinity;
+    private sun = new Vector3();
 
     private ambient = new AmbientLight(0xffffff, 0.55);
     private keyLight = new DirectionalLight(0xffffff, 1.1);
@@ -143,10 +148,9 @@ export class GlobeView implements View3D {
         scene.add(this.backdrop.group);
         this.backdrop.nowDisc.visible = false; // the tower's "now" disc has no meaning here
 
-        scene.add(this.ambient);
-        const key = this.keyLight;
-        key.position.set(-6, 8, 10); // follows the camera, so the lit side always faces the viewer
-        this.camera.add(key);
+        // the key light is the sun, fixed in the world: the globe has a real day side and night side
+        scene.add(this.ambient, this.keyLight);
+        this.updateSun(0);
 
         // a plain sphere, a faint grid, and (later) the coastlines; plus a soft atmosphere that fades out
         scene.add(new Mesh(new SphereGeometry(R, 96, 64), this.earthMat));
@@ -193,6 +197,12 @@ export class GlobeView implements View3D {
     // Setup and options
     // =================================================================
 
+    /** Moves the sun to where it really is now (UTC); refreshed every few seconds. */
+    private updateSun(realT: number) {
+        this.sunAt = realT;
+        this.keyLight.position.copy(sunDirection(new Date(), this.sun)).multiplyScalar(60);
+    }
+
     /** Loads the coastlines (once, the first time the globe is shown). */
     private async loadCoast() {
         try {
@@ -210,11 +220,11 @@ export class GlobeView implements View3D {
     setTheme(theme: Theme) {
         const pal = (this.pal = PALETTES[theme]);
         const light = theme === "light";
-        // a pale globe wants soft, even light; the night-blue one wants contrast
-        // (three.js divides diffuse light by pi, so a bright globe needs large intensities)
-        this.ambient.intensity = light ? 2.7 : 0.55;
-        this.keyLight.intensity = light ? 1.0 : 1.1;
-        this.earthMat.color.set(light ? 0xd2dbe9 : 0x0b1424);
+        // ambient light is the night side, the sun adds the day side
+        // (three.js divides diffuse light by pi, so these are larger than they look)
+        this.ambient.intensity = light ? 1.1 : 0.3;
+        this.keyLight.intensity = 2.2;
+        this.earthMat.color.set(light ? 0xd2dbe9 : 0x1c2d4d);
         this.earthMat.specular.set(light ? 0x8896ad : 0x111827);
         this.coastMat.color.set(light ? 0x3f4d6b : 0x8aa0d0);
         this.gridMat.color.set(light ? 0xa3b0c6 : 0x2a3a5e);
@@ -306,7 +316,15 @@ export class GlobeView implements View3D {
         }
     }
 
+    /** Shifts the picture a few pixels with the phone's tilt (x and y in -1..1). */
+    setParallax(x: number, y: number) {
+        const { w, h } = this.size;
+        if (x === 0 && y === 0) this.camera.clearViewOffset();
+        else this.camera.setViewOffset(w, h, x * PARALLAX_PX, y * PARALLAX_PX, w, h);
+    }
+
     resize(w: number, h: number) {
+        this.size = { w, h };
         this.composer.setPixelRatio(this.renderer.getPixelRatio());
         this.composer.setSize(w, h);
         for (const lb of this.lines) lb.setResolution(w, h);
@@ -345,6 +363,7 @@ export class GlobeView implements View3D {
 
     frame(dt: number) {
         this.frameNo++;
+        if (this.state.realT - this.sunAt > 5) this.updateSun(this.state.realT);
         const { state, pal, fx, tmpM, tmpC, tmpC2, tmpS } = this;
         const { txs, tracked, displayRel, realT } = state;
 
@@ -593,6 +612,26 @@ export class GlobeView implements View3D {
             }
         }
         return best ? { type: "node", node: best } : null;
+    }
+
+    /** Screen positions of the nodes (the globe has no per-transaction positions). */
+    sample(): MorphSample {
+        const W = this.canvas.clientWidth;
+        const H = this.canvas.clientHeight;
+        const v = this.v3;
+        const nodes: MorphSample["nodes"] = new Map();
+        for (const g of this.gnodes) {
+            this.surf(g, 0.02, v);
+            const behind = this.tmpS.copy(this.camera.position).sub(v).dot(g.vec) <= 0;
+            v.project(this.camera);
+            nodes.set(g.nd, {
+                x: ((v.x + 1) / 2) * W,
+                y: ((1 - v.y) / 2) * H,
+                color: (this.fx ? g.fx : g.calm).getStyle(),
+                hidden: behind || v.z > 1,
+            });
+        }
+        return { nodes, txs: [] };
     }
 
     dispose() {

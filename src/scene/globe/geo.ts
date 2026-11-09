@@ -7,6 +7,17 @@ export function latLonToUnit(lat: number, lon: number, out = new Vector3()) {
     return out.set(-Math.sin(phi) * Math.cos(th), Math.cos(phi), Math.sin(phi) * Math.sin(th));
 }
 
+/**
+ * Unit vector towards the sun (the sub-solar point) at a given moment, in the same frame as
+ * latLonToUnit. Accurate to a degree or so, which is plenty for a day/night shadow.
+ */
+export function sunDirection(date = new Date(), out = new Vector3()) {
+    const dayOfYear = (date.getTime() - Date.UTC(date.getUTCFullYear(), 0, 0)) / 86_400_000;
+    const declination = -23.44 * Math.cos(((2 * Math.PI) / 365) * (dayOfYear + 10));
+    const utcHours = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
+    return latLonToUnit(declination, (12 - utcHours) * 15, out); // the sun is overhead at 12:00 UTC on lon 0
+}
+
 /*
  * Node locations. The mirror node describes each node as "Host | City, Country"; these are
  * approximate coordinates for those host cities (state/region centres where only a state or region

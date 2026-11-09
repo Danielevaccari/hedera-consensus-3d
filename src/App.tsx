@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { ArrivalCount } from "./components/ArrivalCount";
 import { ChartsStrip } from "./components/ChartsStrip";
 import { ControlBar } from "./components/ControlBar";
 import { Drawer } from "./components/Drawer";
@@ -25,6 +26,7 @@ function Overlay({ drawer }: { drawer: DrawerState }) {
     return (
         <>
             <TopBar drawer={drawer} />
+            <ArrivalCount />
             <div className="foot">
                 <ChartsStrip />
                 <ControlBar />

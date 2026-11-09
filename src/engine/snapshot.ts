@@ -30,6 +30,8 @@ export interface Stats {
     /** shown transactions per second over the last 30 s */
     tps: number;
     latestBlock: number | null;
+    /** transactions that reached consensus since the page was opened */
+    sinceOpen: number;
     lag: number;
     clock: string;
 }
@@ -84,6 +86,7 @@ export function computeStats(s: LiveState): Stats {
         pingShare: all ? pings / all : null,
         tps: recent / 30,
         latestBlock: s.latestShownBlock?.num ?? null,
+        sinceOpen: s.sinceOpen,
         lag: s.lag,
         clock: s.clock(),
     };
