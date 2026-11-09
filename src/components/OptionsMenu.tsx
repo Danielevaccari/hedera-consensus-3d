@@ -52,6 +52,12 @@ export function OptionsMenu() {
                     onChange={() => engine.togglePings()}
                 />
                 <Option
+                    label="Animations"
+                    hint="view-switch morph and effect motion; follows your system until you change it"
+                    checked={o.motion}
+                    onChange={() => engine.toggleMotion()}
+                />
+                <Option
                     label="Show live charts"
                     checked={o.charts}
                     onChange={() => engine.toggleCharts()}

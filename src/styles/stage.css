@@ -215,10 +215,8 @@
         transform: translate(-50%, -6px);
     }
 }
-@media (prefers-reduced-motion: reduce) {
-    .arrival {
-        animation-duration: 6s;
-    }
+body.reduce-motion .arrival {
+    animation-duration: 6s;
 }
 
 /* ---------- bottom: optional charts, then the control bar ---------- */

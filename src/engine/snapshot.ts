@@ -15,6 +15,8 @@ export interface Options {
     view: ViewId;
     /** the optional live charts strip */
     charts: boolean;
+    /** animations allowed: the system setting unless the visitor chose */
+    motion: boolean;
     hidePings: boolean;
     unrolled: boolean;
     autoRotate: boolean;

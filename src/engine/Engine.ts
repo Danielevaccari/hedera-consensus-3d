@@ -74,6 +74,8 @@ export class Engine {
     private theme: Theme;
     /** the visitor's flashy/calm choice; effects adapt to the theme */
     private fxPref: boolean;
+    /** the visitor's own animation choice; null follows the system's reduced-motion setting */
+    private motionPref: boolean | null;
     private pointer: { x: number; y: number } | null = null;
     private pointerDirty = false;
     private downAt: { x: number; y: number } | null = null;
@@ -97,6 +99,8 @@ export class Engine {
         if (pings) this.state.hidePings = pings === "hidden";
         this.fxPref = readStorage(STORAGE_KEYS.style) !== "calm"; // flashy unless the visitor chose calm
         this.charts = readStorage(STORAGE_KEYS.charts) === "on";
+        const motion = readStorage(STORAGE_KEYS.motion);
+        this.motionPref = motion === "on" ? true : motion === "off" ? false : null;
         // the inline script in index.html has already applied the saved theme to <html>
         this.theme = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
         this.view = initialView();
@@ -226,6 +230,7 @@ export class Engine {
             unrolled: this.tower.unrolled,
             autoRotate: this.active.autoRotate,
             charts: this.charts,
+            motion: this.motion,
             present: this.present,
         };
     }
@@ -266,7 +271,7 @@ export class Engine {
      */
     setView(view: ViewId) {
         if (view === this.view) return;
-        const animate = this.phase === "live" && !prefersReducedMotion();
+        const animate = this.phase === "live" && this.motion;
         let before: MorphSample | null = null;
         if (animate) {
             this.active.frame(0); // a fresh frame, so the copy below is current
@@ -305,6 +310,17 @@ export class Engine {
         writeStorage(STORAGE_KEYS.theme, this.theme);
         this.tower.setTheme(this.theme);
         this.globe.setTheme(this.theme);
+        this.publish();
+    }
+
+    /** Animations are allowed unless the system asks for reduced motion, until the visitor decides. */
+    private get motion() {
+        return this.motionPref ?? !prefersReducedMotion();
+    }
+
+    toggleMotion() {
+        this.motionPref = !this.motion;
+        writeStorage(STORAGE_KEYS.motion, this.motionPref ? "on" : "off");
         this.publish();
     }
 

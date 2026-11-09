@@ -82,6 +82,8 @@ export const STORAGE_KEYS = {
     view: "hedera-tower-view",
     charts: "hedera-tower-charts",
     drawer: "hedera-tower-drawer",
+    /** "on" / "off"; absent = follow the system's reduced-motion setting */
+    motion: "hedera-tower-motion",
     /** also read by the inline script in index.html */
     theme: "hedera-tower-theme",
 } as const;

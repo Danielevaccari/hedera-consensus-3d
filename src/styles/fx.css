@@ -113,8 +113,7 @@ body.fx .sw.blk {
 body.fx .sw.now {
     box-shadow: 0 0 8px var(--gold);
 }
-@media (prefers-reduced-motion: reduce) {
-    body.fx * {
-        animation: none !important;
-    }
+/* set from the Animations option, which follows the system's reduced-motion setting by default */
+body.reduce-motion.fx * {
+    animation: none !important;
 }
