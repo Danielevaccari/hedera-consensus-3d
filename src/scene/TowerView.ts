@@ -45,6 +45,8 @@ import type { MorphPoint, MorphSample, View3D } from "./View3D";
 const PARALLAX_PX = 14;
 /** half the side of the square ring, as a fraction of the round ring's radius */
 const RECT_HALF = 0.88;
+/** the wall is at least this wide (world units), so a network with few nodes is not a thin strip */
+const WALL_WIDTH = 30;
 /** a transaction dot is this wide, so two in one column must be at least this far apart */
 const DOT_DIAMETER = 0.3;
 /** how thick a consensus-order line is in the tower, in world units (a line is about a pixel wide) */
@@ -302,7 +304,8 @@ export class TowerView implements View3D {
         const k = this.vs / CFG.VS;
         // ...and wide enough to show every column, whatever shape the view is
         const half = Math.tan((this.camera.fov / 2) * (Math.PI / 180));
-        const fitWidth = (this.state.nodes.length * CFG.gap + 6) / (2 * half * this.camera.aspect);
+        const fitWidth =
+            (this.state.nodes.length * this.wallGap + 6) / (2 * half * this.camera.aspect);
         const to = new Vector3(0, -8 * k, Math.max(52, fitWidth) * Math.pow(k, 0.75));
         if (animate) this.camTween = { from: this.camera.position.clone(), to, t: 0 };
         else this.camera.position.copy(to);
@@ -426,6 +429,11 @@ export class TowerView implements View3D {
         return (i / this.state.nodes.length) * Math.PI * 2 - Math.PI / 2;
     }
 
+    /** Distance between neighbouring columns on the wall. */
+    private get wallGap() {
+        return Math.max(CFG.gap, WALL_WIDTH / Math.max(1, this.state.nodes.length));
+    }
+
     /** The round ring's point for perimeter fraction p (0 = back, then clockwise seen from above). */
     private roundPoint(p: number): [number, number] {
         const th = p * Math.PI * 2 - Math.PI / 2;
@@ -457,7 +465,7 @@ export class TowerView implements View3D {
             const [qx, qz] = this.rectPoint(i / n);
             const rx = cx + (qx - cx) * r;
             const rz = cz + (qz - cz) * r;
-            const fx = (i - (n - 1) / 2) * CFG.gap;
+            const fx = (i - (n - 1) / 2) * this.wallGap;
             this.colX[i] = rx + (fx - rx) * m;
             this.colZ[i] = rz + (0 - rz) * m;
         }
