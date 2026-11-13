@@ -1,9 +1,5 @@
 // Static configuration shared by the data layer, the 3D scene and the UI.
 
-export const MIRROR_HOST = "https://mainnet-public.mirrornode.hedera.com";
-export const MIRROR_API = `${MIRROR_HOST}/api/v1`;
-export const HASHSCAN_TX = "https://hashscan.io/mainnet/transaction/";
-
 /** The globe shows transactions only briefly: they appear, then fade (seconds). */
 export const GLOBE = {
     /** how long a consensus-order arc stays visible */
@@ -36,7 +32,6 @@ export const FADE = 15;
 export const WHALE_USD = 10_000;
 /** the public mirror node rate-limits per IP: keep requests at least this far apart */
 export const MIN_GAP_MS = 1200;
-export const LEDGER_ROWS = 200;
 export const LOG_ROWS = 40;
 /** UI snapshot rate (seconds) */
 export const UI_INTERVAL = 0.2;
@@ -82,6 +77,8 @@ export const STORAGE_KEYS = {
     view: "hedera-tower-view",
     charts: "hedera-tower-charts",
     drawer: "hedera-tower-drawer",
+    /** "round" | "rect" | "wall" */
+    layout: "hedera-tower-layout",
     /** "on" / "off"; absent = follow the system's reduced-motion setting */
     motion: "hedera-tower-motion",
     /** also read by the inline script in index.html */

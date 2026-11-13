@@ -32,13 +32,6 @@ export function OptionsMenu() {
                     checked={o.autoRotate}
                     onChange={() => engine.toggleAutoRotate()}
                 />
-                {o.view === "tower" && (
-                    <Option
-                        label="Unroll into a wall"
-                        checked={o.unrolled}
-                        onChange={() => engine.toggleUnroll()}
-                    />
-                )}
                 <Option
                     label="Flashy effects"
                     hint="glow, neon trails, shockwaves"

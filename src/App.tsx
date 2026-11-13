@@ -10,6 +10,7 @@ import { Tooltip } from "./components/Tooltip";
 import { TopBar } from "./components/TopBar";
 import { Engine } from "./engine/Engine";
 import { useEngine } from "./engine/EngineContext";
+import { networkFromUrl } from "./network";
 import { useDrawerState, type DrawerState } from "./hooks/useDrawerState";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 
@@ -37,21 +38,26 @@ function Overlay({ drawer }: { drawer: DrawerState }) {
 
 function LiveExplainer() {
     const { ui } = useEngine();
-    return <Explainer stats={ui.stats} />;
+    return <Explainer stats={ui.stats} network={ui.options.network} />;
 }
 
 export function App() {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const viewportRef = useRef<HTMLDivElement>(null);
     const [engine, setEngine] = useState<Engine | null>(null);
+    const [network] = useState(networkFromUrl); // from the URL; changing it reloads the page
     const drawer = useDrawerState();
 
     // the engine drives a WebGL canvas, so it can only start once the canvas is in the DOM
     useEffect(() => {
-        const e = new Engine(canvasRef.current!, viewportRef.current!);
+        const e = new Engine(canvasRef.current!, viewportRef.current!, network);
         setEngine(e);
         return () => e.dispose();
-    }, []);
+    }, [network]);
+
+    useEffect(() => {
+        if (network.id !== "mainnet") document.title = `Hedera ${network.label} consensus 3D`;
+    }, [network]);
 
     useKeyboardShortcuts(engine);
 
@@ -65,7 +71,7 @@ export function App() {
                     <div className="viewport" ref={viewportRef}>
                         <canvas
                             ref={canvasRef}
-                            aria-label="3D view of live Hedera mainnet transactions"
+                            aria-label={`3D view of live Hedera ${network.label} transactions`}
                         />
                         {withEngine(
                             <>
@@ -81,8 +87,8 @@ export function App() {
             </section>
             {withEngine(<LiveExplainer />)}
             <footer>
-                Hedera mainnet consensus visualizer · data from the Hedera public mirror node ·
-                built with three.js and React
+                Hedera {network.label} consensus visualizer · data from the Hedera public mirror
+                node · built with three.js and React
             </footer>
         </>
     );

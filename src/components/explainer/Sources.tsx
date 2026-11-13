@@ -1,6 +1,8 @@
+import type { Network } from "../../network";
+
 const ext = { target: "_blank", rel: "noopener noreferrer" } as const;
 
-export function Sources() {
+export function Sources({ network }: { network: Network }) {
     return (
         <section className="sources">
             <h3>Sources &amp; what is live</h3>
@@ -45,10 +47,10 @@ export function Sources() {
             <p>
                 <b>What is live and what is not.</b> The nodes, their stake, every transaction
                 (type, submitting node, consensus timestamp, result, fee) and every block in the 3D
-                view come from the Hedera mainnet public mirror node, which this page polls about
-                every 2.5 seconds. The view runs a few seconds behind real time because the mirror
-                node publishes each record file a few seconds after consensus. Hedera does not
-                publish the gossip graph itself (events, rounds, witnesses, fame votes), so the
+                view come from the Hedera {network.label} public mirror node, which this page polls
+                about every 2.5 seconds. The view runs a few seconds behind real time because the
+                mirror node publishes each record file a few seconds after consensus. Hedera does
+                not publish the gossip graph itself (events, rounds, witnesses, fame votes), so the
                 cards above explain those steps but the 3D view does not draw them. The exact moment
                 a transaction reached its node is not public either. Its fly-in animation is timed
                 to end at its consensus timestamp. Health-check pings (transactions whose memo names
@@ -57,6 +59,14 @@ export function Sources() {
                 token names come from the mirror node&apos;s token records; token transfers have no
                 USD price, so whale alerts cover HBAR transfers only.
             </p>
+            {!network.priced && (
+                <p>
+                    <b>Testnet.</b> Testnet HBAR has no market value, so USD values and whale alerts
+                    are switched off. Its nodes are all hosted by Hedera in the US, and the mirror
+                    node only names the region, so on the globe they sit at approximate regional
+                    positions.
+                </p>
+            )}
             <p>
                 <b>About the globe.</b> Node positions are approximate: they come from the host city
                 in each node&apos;s mirror-node description (a state or region centre where only

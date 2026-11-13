@@ -16,54 +16,37 @@ import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
 
 /**
- * A per-frame rebuilt batch of coloured line segments.
+ * A per-frame rebuilt batch of coloured line segments. It starts at `initialCap` segments and
+ * doubles whenever it fills up, so no segment is ever dropped.
  *
  * Both meshes read the same arrays: 1-pixel lines for the calm style, and thick screen-space lines
  * (fatWidth CSS px) for the flashy style, which stay visible under the bloom glow.
  */
 export class LineBuf {
     private n = 0;
+    private cap = 0;
     private base = new Color(0, 0, 0);
     private clamp = false;
     private gain = 1;
-    private pos: Float32Array;
-    private col: Float32Array;
+    private pos = new Float32Array(0);
+    private col = new Float32Array(0);
     private geo = new BufferGeometry();
-    private pa: BufferAttribute;
-    private ca: BufferAttribute;
     private fatGeo = new LineSegmentsGeometry();
-    private ib: InstancedInterleavedBuffer;
-    private cb: InstancedInterleavedBuffer;
+    private pa!: BufferAttribute;
+    private ca!: BufferAttribute;
+    private ib!: InstancedInterleavedBuffer;
+    private cb!: InstancedInterleavedBuffer;
     readonly thin: LineSegments;
     readonly fat: LineSegments2;
 
-    constructor(
-        scene: Scene,
-        private cap: number,
-        fatWidth = 1.4,
-    ) {
-        this.pos = new Float32Array(cap * 6);
-        this.col = new Float32Array(cap * 6);
-        this.pa = new BufferAttribute(this.pos, 3).setUsage(DynamicDrawUsage);
-        this.ca = new BufferAttribute(this.col, 3).setUsage(DynamicDrawUsage);
-        this.geo.setAttribute("position", this.pa);
-        this.geo.setAttribute("color", this.ca);
+    constructor(scene: Scene, initialCap: number, fatWidth = 1.4) {
+        this.allocate(initialCap);
         this.thin = new LineSegments(
             this.geo,
             new LineBasicMaterial({ vertexColors: true, depthWrite: false }),
         );
         this.thin.frustumCulled = false;
         scene.add(this.thin);
-
-        this.ib = new InstancedInterleavedBuffer(this.pos, 6, 1).setUsage(DynamicDrawUsage);
-        this.cb = new InstancedInterleavedBuffer(this.col, 6, 1).setUsage(DynamicDrawUsage);
-        this.fatGeo.setAttribute("instanceStart", new InterleavedBufferAttribute(this.ib, 3, 0));
-        this.fatGeo.setAttribute("instanceEnd", new InterleavedBufferAttribute(this.ib, 3, 3));
-        this.fatGeo.setAttribute(
-            "instanceColorStart",
-            new InterleavedBufferAttribute(this.cb, 3, 0),
-        );
-        this.fatGeo.setAttribute("instanceColorEnd", new InterleavedBufferAttribute(this.cb, 3, 3));
         this.fat = new LineSegments2(
             this.fatGeo,
             new LineMaterial({
@@ -77,6 +60,33 @@ export class LineBuf {
         );
         this.fat.frustumCulled = false;
         scene.add(this.fat);
+    }
+
+    /** (Re)creates the arrays and GPU attributes for `cap` segments, keeping what is already in. */
+    private allocate(cap: number) {
+        const pos = new Float32Array(cap * 6);
+        const col = new Float32Array(cap * 6);
+        pos.set(this.pos.subarray(0, this.n * 6));
+        col.set(this.col.subarray(0, this.n * 6));
+        this.cap = cap;
+        this.pos = pos;
+        this.col = col;
+        // the old GPU buffers are released with the old attributes
+        this.geo.dispose();
+        this.fatGeo.dispose();
+        this.pa = new BufferAttribute(pos, 3).setUsage(DynamicDrawUsage);
+        this.ca = new BufferAttribute(col, 3).setUsage(DynamicDrawUsage);
+        this.geo.setAttribute("position", this.pa);
+        this.geo.setAttribute("color", this.ca);
+        this.ib = new InstancedInterleavedBuffer(pos, 6, 1).setUsage(DynamicDrawUsage);
+        this.cb = new InstancedInterleavedBuffer(col, 6, 1).setUsage(DynamicDrawUsage);
+        this.fatGeo.setAttribute("instanceStart", new InterleavedBufferAttribute(this.ib, 3, 0));
+        this.fatGeo.setAttribute("instanceEnd", new InterleavedBufferAttribute(this.ib, 3, 3));
+        this.fatGeo.setAttribute(
+            "instanceColorStart",
+            new InterleavedBufferAttribute(this.cb, 3, 0),
+        );
+        this.fatGeo.setAttribute("instanceColorEnd", new InterleavedBufferAttribute(this.cb, 3, 3));
     }
 
     /** Flashy swaps the 1px lines for thick ones; `additive` glow only works on dark backgrounds. */
@@ -114,7 +124,7 @@ export class LineBuf {
     // prettier-ignore
     push(x1: number, y1: number, z1: number, x2: number, y2: number, z2: number,
          c1: Color, k1: number, c2: Color, k2: number) {
-        if (this.n >= this.cap) return;
+        if (this.n >= this.cap) this.allocate(this.cap * 2);
         k1 *= this.gain; k2 *= this.gain;
         if (this.clamp) { k1 = Math.min(1, k1); k2 = Math.min(1, k2); }
         const o = this.n * 6, p = this.pos, c = this.col, b = this.base;

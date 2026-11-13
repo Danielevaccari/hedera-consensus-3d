@@ -41,21 +41,71 @@ export async function loadCoastlines(radius: number): Promise<Float32Array> {
     const out: number[] = [];
     const a = latLonToUnit(0, 0);
     const b = latLonToUnit(0, 0);
+    const segment = (p: Pt, q: Pt) => {
+        latLonToUnit(p[1], p[0], a).multiplyScalar(radius);
+        latLonToUnit(q[1], q[0], b).multiplyScalar(radius);
+        out.push(a.x, a.y, a.z, b.x, b.y, b.z);
+    };
     for (const poly of polys) {
         for (const ring of poly) {
-            for (let i = 1; i < ring.length; i++) {
-                const [lon1, lat1] = ring[i - 1];
-                const [lon2, lat2] = ring[i];
-                const onDateLine = Math.abs(lon1) > 179.99 && Math.abs(lon2) > 179.99;
-                const atPole = lat1 < -89.99 && lat2 < -89.99;
-                if (onDateLine || atPole) continue;
-                latLonToUnit(lat1, lon1, a).multiplyScalar(radius);
-                latLonToUnit(lat2, lon2, b).multiplyScalar(radius);
-                out.push(a.x, a.y, a.z, b.x, b.y, b.z);
+            for (const line of smoothedLines(ring)) {
+                const last = line.closed ? line.points.length : line.points.length - 1;
+                for (let i = 0; i < last; i++)
+                    segment(line.points[i], line.points[(i + 1) % line.points.length]);
             }
         }
     }
     return new Float32Array(out);
+}
+
+type Pt = number[]; // [lon, lat]
+
+/** How many times the corners of a coastline are cut. Each round rounds it further. */
+const SMOOTHING_ROUNDS = 2;
+
+/** The polygons are cut along the date line and at the south pole: those edges are not coast. */
+const isCut = (p: Pt, q: Pt) =>
+    (Math.abs(p[0]) > 179.99 && Math.abs(q[0]) > 179.99) || (p[1] < -89.99 && q[1] < -89.99);
+
+/** Corner cutting (Chaikin): every corner becomes two points a quarter of the way along its edges. */
+function cutCorners(points: Pt[], closed: boolean): Pt[] {
+    const n = points.length;
+    if (n < 3) return points;
+    const out: Pt[] = [];
+    const edges = closed ? n : n - 1;
+    for (let i = 0; i < edges; i++) {
+        const p = points[i];
+        const q = points[(i + 1) % n];
+        // an open line keeps its two end points where they are
+        if (closed || i > 0) out.push([0.75 * p[0] + 0.25 * q[0], 0.75 * p[1] + 0.25 * q[1]]);
+        if (closed || i < edges - 1)
+            out.push([0.25 * p[0] + 0.75 * q[0], 0.25 * p[1] + 0.75 * q[1]]);
+    }
+    return closed ? out : [points[0], ...out, points[n - 1]];
+}
+
+/**
+ * A polygon ring as smooth lines. Real coastline is split into runs wherever the polygon was cut
+ * (those edges are dropped) and each run is smoothed on its own, so smoothing can never draw
+ * across a cut. An island, which has no cuts, is smoothed all the way round.
+ */
+function smoothedLines(ring: Pt[]): { points: Pt[]; closed: boolean }[] {
+    const smooth = (pts: Pt[], closed: boolean) => {
+        for (let k = 0; k < SMOOTHING_ROUNDS; k++) pts = cutCorners(pts, closed);
+        return { points: pts, closed };
+    };
+    const hasCut = ring.some((p, i) => i > 0 && isCut(ring[i - 1], p));
+    if (!hasCut) return [smooth(ring.slice(0, -1), true)]; // the last point repeats the first
+    const runs: Pt[][] = [];
+    let run: Pt[] = [ring[0]];
+    for (let i = 1; i < ring.length; i++) {
+        if (isCut(ring[i - 1], ring[i])) {
+            if (run.length > 1) runs.push(run);
+            run = [ring[i]];
+        } else run.push(ring[i]);
+    }
+    if (run.length > 1) runs.push(run);
+    return runs.map(r => smooth(r, false));
 }
 
 /** A lat/lon grid every `step` degrees, as line segments on a sphere of the given radius. */

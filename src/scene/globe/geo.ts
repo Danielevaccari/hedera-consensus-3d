@@ -36,6 +36,8 @@ const CITY_COORDS: Record<string, [number, number]> = {
     "la rioja, spain": [42.29, -2.54], "zurich, switzerland": [47.37, 8.54],
     "brussels, belgium": [50.85, 4.35], "cork, ireland": [51.9, -8.47],
     "vilnius, lithuania": [54.69, 25.28],
+    // testnet nodes are described by US region only
+    "west coast, usa": [37.5, -122.0], "east coast, usa": [39.0, -77.0], "central, usa": [39.0, -96.5],
     // other common hosting locations, in case nodes move or are added
     "amsterdam, netherlands": [52.37, 4.9], "dublin, ireland": [53.35, -6.26],
     "madrid, spain": [40.42, -3.7], "milan, italy": [45.46, 9.19], "warsaw, poland": [52.23, 21.01],

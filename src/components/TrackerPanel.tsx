@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { HASHSCAN_TX } from "../config";
 import { useEngine } from "../engine/EngineContext";
 import type { Market } from "../engine/Market";
 import type { TrackerView } from "../engine/snapshot";
@@ -13,7 +12,7 @@ interface Step {
     opaque?: boolean;
 }
 
-function journeySteps(view: TrackerView, market: Market): Step[] {
+function journeySteps(view: TrackerView, market: Market, hashscanTx: string): Step[] {
     const { tx, landed, arriving, block, sinceValid } = view;
     const nd = tx.node;
     const usd = market.usdOf(tx);
@@ -84,7 +83,7 @@ function journeySteps(view: TrackerView, market: Market): Step[] {
                     {usd >= 0.01 && ` · value ${fmtUsd(usd)}`}
                     <br />
                     <a
-                        href={HASHSCAN_TX + encodeURIComponent(tx.ts)}
+                        href={hashscanTx + encodeURIComponent(tx.ts)}
                         target="_blank"
                         rel="noopener noreferrer">
                         Open on HashScan ↗
@@ -112,8 +111,11 @@ function stepClasses(steps: Step[]) {
 export function TrackerPanel() {
     const { engine, ui } = useEngine();
     const view = ui.tracker;
-    if (!view) return <p className="empty">Waiting for the next mainnet transaction…</p>;
-    const steps = journeySteps(view, engine.market);
+    if (!view)
+        return (
+            <p className="empty">Waiting for the next {ui.options.network.label} transaction…</p>
+        );
+    const steps = journeySteps(view, engine.market, ui.options.network.hashscanTx);
     const classes = stepClasses(steps);
     return (
         <>

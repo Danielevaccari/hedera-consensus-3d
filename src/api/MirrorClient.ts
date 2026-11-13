@@ -1,4 +1,4 @@
-import { MIN_GAP_MS, MIRROR_API, MIRROR_HOST } from "../config";
+import { MIN_GAP_MS } from "../config";
 
 export class AbortedError extends Error {
     constructor() {
@@ -17,6 +17,8 @@ export class MirrorClient {
     private nextSlot = 0;
     private controller = new AbortController();
 
+    constructor(private host: string) {}
+
     /** Cancels in-flight requests and waits; they reject with AbortedError. */
     abort() {
         this.controller.abort();
@@ -24,7 +26,7 @@ export class MirrorClient {
 
     async get<T>(path: string, retries = 4): Promise<T> {
         // `links.next` from the API already starts with /api/v1
-        const url = path.startsWith("/api/v1") ? MIRROR_HOST + path : MIRROR_API + path;
+        const url = this.host + (path.startsWith("/api/v1") ? path : `/api/v1${path}`);
         const signal = this.controller.signal;
         for (let attempt = 0; ; attempt++) {
             const now = performance.now();

@@ -2,11 +2,13 @@ import { useEngine } from "../engine/EngineContext";
 import type { DrawerState } from "../hooks/useDrawerState";
 import { fmtInt } from "../lib/format";
 import { InfoPopover } from "./InfoPopover";
+import { NetworkSwitch } from "./NetworkSwitch";
 import { ViewSwitch } from "./ViewSwitch";
 
 /** Slim bar over the 3D view: title, live badge, view switch, four key stats and a few tools. */
 export function TopBar({ drawer }: { drawer: DrawerState }) {
     const { engine, ui } = useEngine();
+    const network = ui.options.network;
     const s = ui.stats;
     const dash = "—";
     const stats = [
@@ -21,15 +23,18 @@ export function TopBar({ drawer }: { drawer: DrawerState }) {
         <header className="topbar glass">
             <div className="brand">
                 <h1>
-                    <span>Hedera</span> <span className="sm-hide">mainnet</span>
+                    <span>Hedera</span>
                 </h1>
                 <span
                     className={`live${ui.online ? "" : " bad"}`}
                     role="status"
-                    aria-label={ui.online ? "Live mainnet data" : "Mirror node unreachable"}>
+                    aria-label={
+                        ui.online ? `Live ${network.label} data` : "Mirror node unreachable"
+                    }>
                     <i />
                     <b>{ui.online ? "LIVE" : "RETRYING"}</b>
                 </span>
+                <NetworkSwitch />
             </div>
             <ViewSwitch />
             <div className="stats">

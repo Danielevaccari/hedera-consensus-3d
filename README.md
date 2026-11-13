@@ -12,6 +12,17 @@ A live 3D view of Hedera mainnet in two views that share one data feed:
 All data comes straight from the public
 [Hedera mirror node](https://docs.hedera.com/hedera/sdks-and-apis/rest-api); there is no backend.
 
+**Mainnet** is shown by default. Open `/?network=testnet` (or use **Options → Network**) for the
+**testnet**; both use the same mirror-node API, so only the host differs. Switching reloads the page,
+and the network comes from the URL alone, so a plain visit is always mainnet. On testnet HBAR has no
+value, so USD figures and whale alerts are off.
+
+Nothing is dropped to keep the picture tidy: buffers grow on demand, and the ledger lists every
+transaction in the window. When a network is busy (testnet puts about 12 tx/s on 7 nodes) the
+tower's time axis stretches so the dots in a column stay apart, and the order lines are dimmed in
+proportion to how many overlap. Mainnet at its usual 1-2 tx/s is drawn at the base scale, but the
+same rule applies when it gets busy.
+
 Below the 3D view, a short explainer covers the main pieces of the hashgraph algorithm (gossip
 about gossip, events, rounds and witnesses, virtual voting, consensus timestamps, finality).
 
@@ -21,7 +32,8 @@ about gossip, events, rounds and witnesses, virtual voting, consensus timestamps
   applied before first paint). Flashy works in both themes: bloom and starfield on dark, pastel washes and coloured
   shadows on light
 - Live tower of the last 2 minutes of mainnet transactions, blocks (record files) and the
-  replayed consensus clock; unroll it into a flat wall
+  replayed consensus clock; one control at the top switches between a round ring (default), a rectangular ring,
+  a flat wall and the globe
 - Transaction journey: follow one transaction from signing to its block
 - Ledger in consensus order, network log, optional live charts (tx/s, type mix, tx per node)
 - Whale alerts for HBAR transfers ≥ $10k, optional hiding of Hedera's health-check pings

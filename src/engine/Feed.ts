@@ -10,6 +10,7 @@ import type {
     TransactionsPage,
 } from "../api/types";
 import { fmtStake, splitTs, trunc } from "../lib/format";
+import type { Network } from "../network";
 import type { LiveState } from "./LiveState";
 import type { Logger } from "./Logger";
 import type { Market } from "./Market";
@@ -31,6 +32,7 @@ export class Feed {
         private state: LiveState,
         private market: Market,
         private logger: Logger,
+        private network: Network,
     ) {}
 
     /** Loads nodes, blocks and the newest page of transactions. Throws if the mirror node fails. */
@@ -44,7 +46,8 @@ export class Feed {
             url = d.links?.next;
         }
         if (!raw.length) throw new Error("the mirror node returned no consensus nodes");
-        await this.refreshRate().catch(rethrowAbort); // no USD values until the next refresh
+        // no USD values until the next refresh (and none at all where HBAR has no price)
+        if (this.network.priced) await this.refreshRate().catch(rethrowAbort);
 
         const bd = await client.get<BlocksPage>("/blocks?order=desc&limit=80");
         if (!bd.blocks.length) throw new Error("the mirror node returned no blocks");
@@ -78,7 +81,7 @@ export class Feed {
 
         this.logger.log(
             "conn",
-            `Connected to **Hedera mainnet**: ${state.nodes.length} consensus nodes, ${fmtStake(state.totalStake)} staked. More than 2/3 of stake needs at least **${state.minSMNodes} nodes**.`,
+            `Connected to **Hedera ${this.network.label}**: ${state.nodes.length} consensus nodes, ${fmtStake(state.totalStake)} staked. More than 2/3 of stake needs at least **${state.minSMNodes} nodes**.`,
         );
         this.logger.log(
             "conn",
@@ -114,7 +117,10 @@ export class Feed {
             }
 
             if (this.backfillUrl) await this.backfillPage();
-            else if (performance.now() - market.rateFetchedAt > RATE_REFRESH_MS)
+            else if (
+                this.network.priced &&
+                performance.now() - market.rateFetchedAt > RATE_REFRESH_MS
+            )
                 await this.refreshRate().catch(rethrowAbort);
             else if (market.hasQueuedTokens() && (this.tokenTurn = !this.tokenTurn))
                 await this.fetchToken(market.nextQueuedToken()!);
@@ -174,7 +180,7 @@ export class Feed {
         if (!this.backfillUrl)
             this.logger.log(
                 "conn",
-                `History loaded: the tower now shows the last **${Math.round(CFG.window / 60)} minutes** of mainnet transactions.`,
+                `History loaded: the tower now shows the last **${Math.round(CFG.window / 60)} minutes** of ${this.network.label} transactions.`,
             );
     }
 

@@ -1,24 +1,32 @@
 import { useEngine } from "../engine/EngineContext";
-import type { ViewId } from "../scene/View3D";
+import type { ShapeId } from "../engine/Engine";
 
-const VIEWS: { id: ViewId; label: string }[] = [
-    { id: "tower", label: "Tower" },
-    { id: "globe", label: "Globe" },
+const SHAPES: { id: ShapeId; full: string; short: string }[] = [
+    { id: "round", full: "Round", short: "Round" },
+    { id: "rect", full: "Rectangular", short: "Rect" },
+    { id: "wall", full: "Wall", short: "Wall" },
+    { id: "globe", full: "Globe", short: "Globe" },
 ];
 
-/** Segmented switch between the two 3D views. */
+/**
+ * The one control for how the network is drawn: the tower as a round ring, a rectangular ring or
+ * a flat wall, or the globe. (The short names are for narrower screens, see the CSS.)
+ */
 export function ViewSwitch() {
     const { engine, ui } = useEngine();
+    const o = ui.options;
+    const current: ShapeId = o.view === "globe" ? "globe" : o.layout;
     return (
-        <div className="seg" role="group" aria-label="3D view">
-            {VIEWS.map(v => (
+        <div className="seg" role="group" aria-label="How the network is drawn">
+            {SHAPES.map(s => (
                 <button
-                    key={v.id}
+                    key={s.id}
                     type="button"
-                    aria-pressed={ui.options.view === v.id}
-                    className={ui.options.view === v.id ? "on" : undefined}
-                    onClick={() => engine.setView(v.id)}>
-                    {v.label}
+                    aria-pressed={current === s.id}
+                    className={current === s.id ? "on" : undefined}
+                    onClick={() => engine.choose(s.id)}>
+                    <span className="full">{s.full}</span>
+                    <span className="short">{s.short}</span>
                 </button>
             ))}
         </div>

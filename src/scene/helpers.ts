@@ -5,6 +5,8 @@ import {
     FrontSide,
     InstancedBufferAttribute,
     InstancedMesh,
+    type Color,
+    type Matrix4,
     MeshBasicMaterial,
     NormalBlending,
     Sprite,
@@ -22,29 +24,77 @@ interface InstancedOpts {
     side?: Side;
 }
 
-/** An instanced mesh with per-instance colours, rewritten every frame. */
-export function makeInstanced(
-    scene: Scene,
-    geo: BufferGeometry,
-    cap: number,
-    opts: InstancedOpts = {},
-) {
-    const mat = new MeshBasicMaterial({
-        color: 0xffffff,
-        transparent: !!opts.transparent,
-        blending: opts.additive ? AdditiveBlending : NormalBlending,
-        depthWrite: !opts.transparent,
-        fog: opts.fog ?? true,
-        side: opts.side ?? FrontSide,
-    });
-    const m = new InstancedMesh(geo, mat, cap);
-    m.instanceMatrix.setUsage(DynamicDrawUsage);
-    m.instanceColor = new InstancedBufferAttribute(new Float32Array(cap * 3), 3);
-    m.instanceColor.setUsage(DynamicDrawUsage);
-    m.frustumCulled = false;
-    m.count = 0;
-    scene.add(m);
-    return m;
+/**
+ * Instanced meshes with per-instance colours, rewritten every frame. The batch starts at
+ * `initialCap` instances and doubles whenever it fills up, so nothing is ever dropped.
+ */
+export class InstancedBatch {
+    readonly material: MeshBasicMaterial;
+    private mesh: InstancedMesh;
+    private n = 0;
+
+    constructor(
+        private scene: Scene,
+        private geo: BufferGeometry,
+        private cap: number,
+        opts: InstancedOpts = {},
+    ) {
+        this.material = new MeshBasicMaterial({
+            color: 0xffffff,
+            transparent: !!opts.transparent,
+            blending: opts.additive ? AdditiveBlending : NormalBlending,
+            depthWrite: !opts.transparent,
+            fog: opts.fog ?? true,
+            side: opts.side ?? FrontSide,
+        });
+        this.mesh = this.create(cap);
+    }
+
+    private create(cap: number) {
+        const m = new InstancedMesh(this.geo, this.material, cap);
+        m.instanceMatrix.setUsage(DynamicDrawUsage);
+        m.instanceColor = new InstancedBufferAttribute(new Float32Array(cap * 3), 3);
+        m.instanceColor.setUsage(DynamicDrawUsage);
+        m.frustumCulled = false;
+        m.count = 0;
+        this.scene.add(m);
+        return m;
+    }
+
+    /** Starts a new frame: forget last frame's instances. */
+    reset() {
+        this.n = 0;
+    }
+
+    add(matrix: Matrix4, color: Color) {
+        if (this.n >= this.cap) this.grow();
+        this.mesh.setMatrixAt(this.n, matrix);
+        this.mesh.setColorAt(this.n, color);
+        this.n++;
+    }
+
+    private grow() {
+        const old = this.mesh;
+        this.cap *= 2;
+        this.mesh = this.create(this.cap);
+        this.mesh.instanceMatrix.array.set(old.instanceMatrix.array);
+        this.mesh.instanceColor!.array.set(old.instanceColor!.array);
+        this.scene.remove(old);
+        old.dispose(); // frees its instance buffers; the shared geometry and material stay
+    }
+
+    /** Publishes this frame's instances to the GPU. */
+    flush() {
+        this.mesh.count = this.n;
+        this.mesh.instanceMatrix.needsUpdate = true;
+        this.mesh.instanceColor!.needsUpdate = true;
+    }
+
+    dispose() {
+        this.scene.remove(this.mesh);
+        this.mesh.dispose();
+        this.material.dispose();
+    }
 }
 
 /** label canvases are drawn at 3x so text stays sharp when zoomed in */

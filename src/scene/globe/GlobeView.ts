@@ -34,7 +34,7 @@ import type { LiveState } from "../../engine/LiveState";
 import type { Hover, HNode, Tx } from "../../engine/types";
 import { trunc } from "../../lib/format";
 import { createBackdrop } from "../backdrop";
-import { disposeSprite, makeInstanced, sizeSprite, textSprite, type TextSprite } from "../helpers";
+import { disposeSprite, InstancedBatch, sizeSprite, textSprite, type TextSprite } from "../helpers";
 import { LineBuf } from "../LineBuf";
 import { PALETTES, type Palette, type Theme } from "../palette";
 import { createComposer } from "../renderer";
@@ -47,7 +47,6 @@ const PARALLAX_PX = 14;
 const R = 10;
 const UP = new Vector3(0, 1, 0);
 const Z = new Vector3(0, 0, 1);
-const DROP_CAP = 3000;
 const RIPPLE_SECONDS = 1.3;
 
 /** A node placed on the sphere. */
@@ -74,6 +73,7 @@ export class GlobeView implements View3D {
     private composer: EffectComposer;
     private backdrop = createBackdrop();
     private fitted = false;
+    private aimed = false;
     private size = { w: 1, h: 1 };
     private sunAt = -Infinity;
     private sun = new Vector3();
@@ -175,10 +175,10 @@ export class GlobeView implements View3D {
 
         const spike = new CylinderGeometry(1, 1, 1, 10);
         spike.translate(0, 0.5, 0);
-        this.spikeMesh = makeInstanced(scene, spike, 128);
-        this.markerMesh = makeInstanced(scene, new SphereGeometry(1, 24, 16), 128);
-        this.dropMesh = makeInstanced(scene, new SphereGeometry(1, 16, 12), DROP_CAP);
-        this.rippleMesh = makeInstanced(scene, new RingGeometry(0.86, 1, 48), 600, {
+        this.spikeMesh = new InstancedBatch(scene, spike, 64);
+        this.markerMesh = new InstancedBatch(scene, new SphereGeometry(1, 24, 16), 64);
+        this.dropMesh = new InstancedBatch(scene, new SphereGeometry(1, 16, 12), 512);
+        this.rippleMesh = new InstancedBatch(scene, new RingGeometry(0.86, 1, 48), 128, {
             transparent: true,
             additive: true,
             side: DoubleSide,
@@ -288,7 +288,24 @@ export class GlobeView implements View3D {
                 this.byNode.set(nd, gn);
             });
         }
+        if (!this.aimed && this.gnodes.length) this.aimAtNodes();
         this.setFx(this.fx);
+    }
+
+    /**
+     * The first time the nodes are known: keep the default view (facing Europe, where most mainnet
+     * nodes are) if it shows most of them, otherwise turn the camera towards the nodes' average
+     * direction. Testnet is all in the US and would otherwise start with every node out of sight.
+     */
+    private aimAtNodes() {
+        this.aimed = true;
+        const facing = this.camera.position.clone().normalize();
+        const visible = this.gnodes.filter(g => g.vec.dot(facing) > 0.15).length;
+        if (visible >= this.gnodes.length / 2) return;
+        const sum = new Vector3();
+        for (const g of this.gnodes) sum.add(g.vec);
+        if (sum.length() < 0.2) return; // nodes all around the globe: no good direction
+        this.camera.position.copy(sum.normalize().multiplyScalar(this.camera.position.length()));
     }
 
     setFx(fx: boolean) {
@@ -375,13 +392,13 @@ export class GlobeView implements View3D {
             if (displayRel - tx.ct > GLOBE.SPIKE_WINDOW) break;
             if (tx.node && state.shown(tx)) tx.node.count++;
         }
-        // a floor keeps a couple of stray transactions from towering over a quiet globe
-        let maxCount = 6;
+        let maxCount = 1;
         for (const g of this.gnodes) if (g.nd.count > maxCount) maxCount = g.nd.count;
 
         // ---- node markers (size = stake) and spikes (height = tx received) ----
         const maxStake = Math.max(...state.nodes.map(n => n.stake), 1);
-        let si = 0;
+        this.markerMesh.reset();
+        this.spikeMesh.reset();
         for (const g of this.gnodes) {
             const nd = g.nd;
             const target = 0.15 + 2.6 * (nd.count / maxCount);
@@ -391,22 +408,17 @@ export class GlobeView implements View3D {
             const col = fx ? g.fx : g.calm;
             tmpS.setScalar(r * (1 + (fx ? 0.35 : 0.15) * p));
             tmpM.compose(this.surf(g, 0.02), g.quat, tmpS);
-            this.markerMesh.setMatrixAt(si, tmpM);
-            this.markerMesh.setColorAt(si, col);
+            this.markerMesh.add(tmpM, col);
             tmpS.set(0.022, g.h, 0.022);
             tmpM.compose(this.surf(g, 0.02), g.quat, tmpS);
             tmpC.copy(col);
             if (pal.theme === "dark") tmpC.multiplyScalar(0.75);
-            this.spikeMesh.setMatrixAt(si, tmpM);
-            this.spikeMesh.setColorAt(si, tmpC);
-            si++;
+            this.spikeMesh.add(tmpM, tmpC);
         }
-        this.markerMesh.count = si;
-        this.spikeMesh.count = si;
 
         // ---- transactions dropping onto their node just before their consensus time ----
         this.trailLines.reset();
-        let di = 0;
+        this.dropMesh.reset();
         for (let k = txs.length - 1; k >= 0; k--) {
             const tx = txs[k];
             if (tx.landed) break;
@@ -424,11 +436,7 @@ export class GlobeView implements View3D {
             tx.py = pos.y;
             tx.pz = pos.z;
             tx.frame = this.frameNo;
-            if (di < DROP_CAP - 10) {
-                this.dropMesh.setMatrixAt(di, tmpM);
-                this.dropMesh.setColorAt(di, col);
-                di++;
-            }
+            this.dropMesh.add(tmpM, col);
             const tail = this.surf(g, alt + 0.45, tmpS);
             this.trailLines.push(pos.x, pos.y, pos.z, tail.x, tail.y, tail.z, col, 0.7, col, 0);
         }
@@ -436,8 +444,8 @@ export class GlobeView implements View3D {
 
         // ---- arrival ripples on the surface (recently landed transactions) ----
         const ripSecs = fx ? RIPPLE_SECONDS * 1.4 : RIPPLE_SECONDS;
-        let ri = 0;
-        for (let k = txs.length - 1; k >= 0 && ri < 590; k--) {
+        this.rippleMesh.reset();
+        for (let k = txs.length - 1; k >= 0; k--) {
             const tx = txs[k];
             if (!tx.landed) continue;
             const age = realT - tx.landedReal;
@@ -450,11 +458,8 @@ export class GlobeView implements View3D {
             const f = 1 - age / ripSecs;
             tmpS.setScalar((fx ? 0.14 : 0.1) + (fx ? 0.95 : 0.55) * (age / ripSecs));
             tmpM.compose(this.surf(g, 0.015), g.quatZ, tmpS);
-            this.rippleMesh.setMatrixAt(ri, tmpM);
-            this.rippleMesh.setColorAt(ri, this.fadedColor(tmpC2, this.txColor(tx), f, 0.8));
-            ri++;
+            this.rippleMesh.add(tmpM, this.fadedColor(tmpC2, this.txColor(tx), f, 0.8));
         }
-        this.rippleMesh.count = ri;
 
         // ---- consensus order arcs: each transaction linked to the next one in the global order ----
         this.arcLines.reset();
@@ -479,22 +484,17 @@ export class GlobeView implements View3D {
                     c2,
                     kk,
                 );
-                if (u < 1 && end && di < DROP_CAP - 10) {
+                if (u < 1 && end) {
                     // a small head travels along the arc while it is being drawn
                     tmpM.makeScale(0.05, 0.05, 0.05).setPosition(end);
-                    this.dropMesh.setMatrixAt(di, tmpM);
-                    this.dropMesh.setColorAt(di, c2);
-                    di++;
+                    this.dropMesh.add(tmpM, c2);
                 }
             }
             newer = tx;
         }
-        this.dropMesh.count = di;
         this.arcLines.flush();
-        for (const mm of [this.dropMesh, this.markerMesh, this.spikeMesh, this.rippleMesh]) {
-            mm.instanceMatrix.needsUpdate = true;
-            if (mm.instanceColor) mm.instanceColor.needsUpdate = true;
-        }
+        for (const batch of [this.dropMesh, this.markerMesh, this.spikeMesh, this.rippleMesh])
+            batch.flush();
 
         this.updateTrackMarker();
         if (fx) this.backdrop.tick(realT, dt);

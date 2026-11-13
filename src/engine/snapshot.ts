@@ -1,6 +1,8 @@
 // The read-only view of the engine that React renders, rebuilt a few times per second.
-import { CFG, KIND_LIST, LEDGER_ROWS, type Kind } from "../config";
+import { CFG, KIND_LIST, type Kind } from "../config";
+import type { Network } from "../network";
 import type { Theme } from "../scene/palette";
+import type { LayoutId } from "../scene/TowerView";
 import type { ViewId } from "../scene/View3D";
 import type { LiveState } from "./LiveState";
 import type { Block, HNode, LogEntry, Tx } from "./types";
@@ -8,6 +10,7 @@ import type { Block, HNode, LogEntry, Tx } from "./types";
 export type Phase = "loading" | "error" | "live";
 
 export interface Options {
+    network: Network;
     paused: boolean;
     /** flashy effects (they adapt to the theme) */
     fx: boolean;
@@ -18,7 +21,8 @@ export interface Options {
     /** animations allowed: the system setting unless the visitor chose */
     motion: boolean;
     hidePings: boolean;
-    unrolled: boolean;
+    /** how the tower’s columns are arranged */
+    layout: LayoutId;
     autoRotate: boolean;
     present: boolean;
 }
@@ -94,10 +98,10 @@ export function computeStats(s: LiveState): Stats {
     };
 }
 
-/** The newest landed, shown transactions, newest first. */
+/** Every landed, shown transaction in the tower's window, newest first. */
 export function computeLedger(s: LiveState): Tx[] {
     const rows: Tx[] = [];
-    for (let k = s.txs.length - 1; k >= 0 && rows.length < LEDGER_ROWS; k--) {
+    for (let k = s.txs.length - 1; k >= 0; k--) {
         const tx = s.txs[k];
         if (tx.landed && s.shown(tx)) rows.push(tx);
     }

@@ -48,8 +48,9 @@
     left: 10px;
     right: 10px;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 12px;
+    gap: 8px 12px;
     padding: 5px 6px 5px 12px;
 }
 .brand {
@@ -97,6 +98,36 @@
     background: var(--red);
 }
 
+/* the network selector: a compact native select, so it works well on phones too */
+.net-select {
+    appearance: none;
+    flex: none;
+    max-width: 110px;
+    padding: 3px 22px 3px 9px;
+    border: 1px solid var(--line2);
+    border-radius: var(--radius-sm);
+    background-color: transparent;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238e9bbd' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 7px center;
+    color: var(--text);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.net-select:hover {
+    border-color: var(--btn-hover-line);
+}
+.net-select:focus-visible {
+    outline: 2px solid var(--cyan);
+    outline-offset: 2px;
+}
+.net-select option {
+    background: var(--panel-solid);
+    color: var(--text);
+}
+
 .seg {
     display: inline-flex;
     flex: none;
@@ -114,6 +145,9 @@
     font-weight: 600;
     padding: 4px 12px;
     cursor: pointer;
+}
+.seg .short {
+    display: none;
 }
 .seg button:hover {
     color: var(--text);
@@ -640,6 +674,17 @@ body.reduce-motion .arrival {
 }
 
 /* ---------- narrower screens ---------- */
+@media (max-width: 1280px) {
+    .seg .full {
+        display: none;
+    }
+    .seg .short {
+        display: inline;
+    }
+    .stat:nth-child(2) {
+        display: none;
+    }
+}
 @media (max-width: 1100px) {
     .stat:nth-child(2) {
         display: none; /* block number: least important of the four */
@@ -682,16 +727,24 @@ body.reduce-motion .arrival {
         gap: 8px;
         padding-left: 10px;
     }
-    .brand h1 {
-        font-size: 13px;
-    }
-    .sm-hide,
+    .brand h1,
     .live b,
     .details .lbl {
         display: none;
     }
+    .brand {
+        order: 1;
+    }
+    .tools {
+        order: 2;
+    }
+    .seg {
+        order: 3;
+        flex: 1 1 100%;
+    }
     .seg button {
-        padding: 4px 9px;
+        flex: 1;
+        padding: 5px 6px;
     }
     .tools {
         gap: 4px;

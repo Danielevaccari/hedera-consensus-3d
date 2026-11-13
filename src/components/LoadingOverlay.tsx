@@ -10,8 +10,8 @@ export function LoadingOverlay() {
                     <br />
                     {ui.error}
                     <br />
-                    This page only shows real mainnet data, so there is nothing to display until the
-                    mirror node answers.
+                    This page only shows real {ui.options.network.label} data, so there is nothing
+                    to display until the mirror node answers.
                     <br />
                     <button
                         type="button"
@@ -23,7 +23,7 @@ export function LoadingOverlay() {
             ) : (
                 <div>
                     <div className="spin" />
-                    Connecting to Hedera mainnet…
+                    Connecting to Hedera {ui.options.network.label}…
                 </div>
             )}
         </div>

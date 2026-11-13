@@ -31,7 +31,7 @@ import { createBackdrop } from "./backdrop";
 import {
     bezier,
     disposeSprite,
-    makeInstanced,
+    InstancedBatch,
     sizeSprite,
     textSprite,
     type TextSprite,
@@ -43,9 +43,15 @@ import type { MorphPoint, MorphSample, View3D } from "./View3D";
 
 /** how far the tilt shifts the picture at most, in CSS pixels */
 const PARALLAX_PX = 14;
-const TX_CAP = 8000;
-const DOT_CAP = 3000;
-const SHOCK_CAP = 600;
+/** half the side of the square ring, as a fraction of the round ring's radius */
+const RECT_HALF = 0.88;
+/** a transaction dot is this wide, so two in one column must be at least this far apart */
+const DOT_DIAMETER = 0.3;
+/** how thick a consensus-order line is in the tower, in world units (a line is about a pixel wide) */
+const LINE_WORLD_WIDTH = 0.1;
+
+/** How the columns are arranged: a round ring, a rectangular ring, or one flat wall. */
+export type LayoutId = "round" | "rect" | "wall";
 
 interface NodeVisual {
     core: Mesh<SphereGeometry, MeshBasicMaterial>;
@@ -86,13 +92,36 @@ export class TowerView implements View3D {
     private nowLabel: TextSprite | null = null;
     private blockLabels = new Map<number, TextSprite>();
 
-    // ---- layout: cylinder <-> flat wall morph ----
+    // ---- layout: round <-> rectangular <-> wall, as two smooth blends ----
     private colX = new Float32Array(1);
     private colZ = new Float32Array(1);
     private fitted = false;
+    /**
+     * World units per second of consensus time. CFG.VS on a quiet network; stretched when the
+     * busiest column would otherwise stack its dots into one solid bar (see updateTimeScale).
+     */
+    private vs: number = CFG.VS;
+    private colCounts = new Uint32Array(0);
+    /**
+     * Order lines overlap when the network is busy: lines per unit of height (rate / vs) times a
+     * line's thickness. Each line is dimmed by that overlap, so a row of the tower carries about as
+     * much light as on a quiet network (where this stays 1) and nothing is hidden.
+     */
+    private threadGain = 1;
     private size = { w: 1, h: 1 };
-    private morph = 0;
-    private morphTarget = 0;
+    /** 0 = a ring, 1 = the flat wall (eased in computeColumns) */
+    private wall = 0;
+    private wallTarget = 0;
+    /** within a ring: 0 = round, 1 = rectangular */
+    private square = 0;
+    private squareTarget = 0;
+    /** the closed outline through the columns (plus the corners of a rectangular ring) */
+    private ringX: number[] = [];
+    private ringZ: number[] = [];
+    private ringNode: number[] = [];
+    private ringClosed = true;
+    /** how far the outline reaches from the axis: where outside labels and flashes go */
+    private reach: number = CFG.R;
     private camTween: { from: Vector3; to: Vector3; t: number } | null = null;
 
     // ---- scratch ----
@@ -130,9 +159,9 @@ export class TowerView implements View3D {
         scene.add(this.backdrop.group);
 
         const dotGeo = new IcosahedronGeometry(1, 3);
-        this.txMesh = makeInstanced(scene, dotGeo, TX_CAP);
-        this.dotMesh = makeInstanced(scene, dotGeo, DOT_CAP, { fog: false });
-        this.shockMesh = makeInstanced(scene, new TorusGeometry(1, 0.025, 6, 64), SHOCK_CAP, {
+        this.txMesh = new InstancedBatch(scene, dotGeo, 1024);
+        this.dotMesh = new InstancedBatch(scene, dotGeo, 512, { fog: false });
+        this.shockMesh = new InstancedBatch(scene, new TorusGeometry(1, 0.025, 6, 64), 256, {
             transparent: true,
             additive: true,
             fog: false,
@@ -166,7 +195,7 @@ export class TowerView implements View3D {
         this.trackStar.material.color.copy(pal.gold);
         this.trackHalo.material.color.copy(pal.gold);
         this.backdrop.setTheme(light);
-        const shock = this.shockMesh.material as MeshBasicMaterial;
+        const shock = this.shockMesh.material;
         shock.blending = light ? NormalBlending : AdditiveBlending;
         shock.needsUpdate = true;
 
@@ -219,6 +248,7 @@ export class TowerView implements View3D {
         });
         this.colX = new Float32Array(nodes.length);
         this.colZ = new Float32Array(nodes.length);
+        this.colCounts = new Uint32Array(nodes.length);
         this.setFx(this.fx);
     }
 
@@ -251,20 +281,31 @@ export class TowerView implements View3D {
         this.controls.enabled = on;
     }
 
-    get unrolled() {
-        return this.morphTarget === 1;
+    get layout(): LayoutId {
+        return this.wallTarget === 1 ? "wall" : this.squareTarget === 1 ? "rect" : "round";
     }
-    /** Unrolls the tower into a flat wall (and back); unrolling also frames the wall. */
-    set unrolled(on: boolean) {
-        this.morphTarget = on ? 1 : 0;
-        if (on) {
-            this.controls.autoRotate = false;
-            this.camTween = {
-                from: this.camera.position.clone(),
-                to: new Vector3(0, -8, 52),
-                t: 0,
-            };
+
+    /**
+     * Rearranges the columns, with a smooth morph unless `animate` is false (first load). The wall
+     * also frames itself: it is wide and flat, so the camera moves to face it.
+     */
+    setLayout(layout: LayoutId, animate = true) {
+        this.wallTarget = layout === "wall" ? 1 : 0;
+        this.squareTarget = layout === "rect" ? 1 : 0;
+        if (!animate) {
+            this.wall = this.wallTarget;
+            this.square = this.squareTarget;
         }
+        if (layout !== "wall") return;
+        this.controls.autoRotate = false;
+        // the wall is as tall as the tower now is: back off by the same rule as the time scale
+        const k = this.vs / CFG.VS;
+        // ...and wide enough to show every column, whatever shape the view is
+        const half = Math.tan((this.camera.fov / 2) * (Math.PI / 180));
+        const fitWidth = (this.state.nodes.length * CFG.gap + 6) / (2 * half * this.camera.aspect);
+        const to = new Vector3(0, -8 * k, Math.max(52, fitWidth) * Math.pow(k, 0.75));
+        if (animate) this.camTween = { from: this.camera.position.clone(), to, t: 0 };
+        else this.camera.position.copy(to);
     }
 
     /** Shifts the picture a few pixels with the phone's tilt (x and y in -1..1). */
@@ -313,10 +354,13 @@ export class TowerView implements View3D {
     frame(dt: number) {
         this.frameNo++;
         this.tweenCamera(dt);
-        this.morph += (this.morphTarget - this.morph) * Math.min(1, dt * 2.2);
+        this.updateTimeScale(dt);
+        const ease = Math.min(1, dt * 2.2);
+        this.wall += (this.wallTarget - this.wall) * ease;
+        this.square += (this.squareTarget - this.square) * ease;
         const m = this.computeColumns();
         this.updateNodes(m);
-        this.updateBaseLines(m);
+        this.updateBaseLines();
         this.updateTransactions(m);
         this.updateBlocks(m);
         this.updateClock(m, dt);
@@ -335,23 +379,131 @@ export class TowerView implements View3D {
         if (tw.t >= 1) this.camTween = null;
     }
 
+    /**
+     * Gives a busy network room. If the busiest column has lately received more than one
+     * transaction per dot-width of height, the time axis stretches until they fit. Every
+     * transaction stays exactly at its own column and time and none is dropped; only the vertical
+     * scale changes, and never below CFG.VS. The camera follows so the framing stays put.
+     */
+    private updateTimeScale(dt: number) {
+        const { txs, displayRel } = this.state;
+        const counts = this.colCounts;
+        counts.fill(0);
+        let busiest = 0;
+        let total = 0;
+        for (let k = txs.length - 1; k >= 0; k--) {
+            const tx = txs[k];
+            if (!tx.landed) continue;
+            if (displayRel - tx.ct > CFG.window) break;
+            if (!tx.node || !this.state.shown(tx)) continue;
+            total++;
+            const c = ++counts[tx.node.i];
+            if (c > busiest) busiest = c;
+        }
+        const wanted = Math.max(CFG.VS, (DOT_DIAMETER * busiest) / CFG.window);
+        const before = this.vs;
+        this.vs += (wanted - before) * Math.min(1, dt * 1.5);
+        this.reframe(this.vs / before);
+        this.threadGain = 1 / Math.max(1, (total / CFG.window / this.vs) * LINE_WORLD_WIDTH);
+    }
+
+    /** Follows a change of the time scale: the tower gets taller, so the view backs off with it. */
+    private reframe(ratio: number) {
+        if (Math.abs(ratio - 1) < 1e-5) return;
+        const target = this.controls.target;
+        const offset = this.camera.position.clone().sub(target);
+        target.y *= ratio;
+        // back off by less than the full stretch: the tower is taller, not wider
+        const back = Math.pow(ratio, 0.75);
+        offset.multiplyScalar(back);
+        this.camera.position.copy(target).add(offset);
+        this.fog.near *= back;
+        this.fog.far *= back;
+        this.controls.maxDistance *= back;
+    }
+
     private nodeAngle(i: number) {
         return (i / this.state.nodes.length) * Math.PI * 2 - Math.PI / 2;
     }
 
-    /** Column positions for the current morph; returns the eased morph amount. */
+    /** The round ring's point for perimeter fraction p (0 = back, then clockwise seen from above). */
+    private roundPoint(p: number): [number, number] {
+        const th = p * Math.PI * 2 - Math.PI / 2;
+        return [CFG.R * Math.cos(th), CFG.R * Math.sin(th)];
+    }
+
+    /** The same fraction of the way round the square: p = 0 is the middle of the back face. */
+    private rectPoint(p: number): [number, number] {
+        const a = CFG.R * RECT_HALF;
+        const u = (((p * 4 + 0.5) % 4) + 4) % 4; // 0..4, one unit per face
+        const side = Math.floor(u);
+        const t = u - side;
+        if (side === 0) return [-a + 2 * a * t, -a]; // back, left to right
+        if (side === 1) return [a, -a + 2 * a * t]; // right, back to front
+        if (side === 2) return [a - 2 * a * t, a]; // front, right to left
+        return [-a, a - 2 * a * t]; // left, front to back
+    }
+
+    /**
+     * Column positions for the current layout, and the outline through them. Returns the eased
+     * wall amount (0 = a ring, 1 = flat).
+     */
     private computeColumns() {
         const n = this.state.nodes.length;
-        const m = this.morph * this.morph * (3 - 2 * this.morph);
+        const m = this.wall * this.wall * (3 - 2 * this.wall);
+        const r = this.square * this.square * (3 - 2 * this.square);
         for (let i = 0; i < n; i++) {
-            const th = this.nodeAngle(i);
-            const cx = CFG.R * Math.cos(th);
-            const cz = CFG.R * Math.sin(th);
+            const [cx, cz] = this.roundPoint(i / n);
+            const [qx, qz] = this.rectPoint(i / n);
+            const rx = cx + (qx - cx) * r;
+            const rz = cz + (qz - cz) * r;
             const fx = (i - (n - 1) / 2) * CFG.gap;
-            this.colX[i] = cx + (fx - cx) * m;
-            this.colZ[i] = cz + (0 - cz) * m;
+            this.colX[i] = rx + (fx - rx) * m;
+            this.colZ[i] = rz + (0 - rz) * m;
         }
+        this.buildRing(n, m, r);
         return m;
+    }
+
+    /**
+     * The outline through the columns. A rectangular ring gets its four corners added, so it has
+     * real corners instead of cutting across them; a round one needs none.
+     */
+    private buildRing(n: number, m: number, r: number) {
+        const { ringX: rx, ringZ: rz, ringNode: rn } = this;
+        rx.length = rz.length = rn.length = 0;
+        const corners = r > 0.001 && m < 0.5;
+        let reach = 0;
+        const add = (x: number, z: number, node: number) => {
+            rx.push(x);
+            rz.push(z);
+            rn.push(node);
+            reach = Math.max(reach, Math.hypot(x, z));
+        };
+        for (let i = 0; i < n; i++) {
+            add(this.colX[i], this.colZ[i], i);
+            if (!corners) continue;
+            for (let c = 0; c < 4; c++) {
+                const pc = 0.125 + 0.25 * c; // a corner sits half way between face centres
+                if (pc <= i / n || pc > (i + 1) / n) continue;
+                const [cx, cz] = this.roundPoint(pc);
+                const [qx, qz] = this.rectPoint(pc);
+                add(cx + (qx - cx) * r, cz + (qz - cz) * r, i);
+            }
+        }
+        this.ringClosed = m <= 0.5; // the wall is a line, not a loop
+        this.reach = Math.max(reach, 1);
+    }
+
+    /** Draws the outline at height y, in one colour. */
+    private pushRing(lines: LineBuf, y: number, c: Color, k: number) {
+        const { ringX: rx, ringZ: rz } = this;
+        const count = rx.length;
+        const segments = this.ringClosed ? count : count - 1;
+        for (let a = 0; a < segments; a++) {
+            const b = (a + 1) % count;
+            lines.push(rx[a], y, rz[a], rx[b], y, rz[b], c, k, c, k);
+        }
     }
 
     private nodeColor(i: number) {
@@ -376,9 +528,11 @@ export class TowerView implements View3D {
             glow.scale.setScalar(nd.size * (fx ? 0.62 + p * 0.7 : 0.62));
             glow.material.opacity = fx ? 0.16 + p * 0.3 : p * 0.35;
 
+            // pushed outwards from the axis (a unit vector, so a square ring's corners are not skipped)
+            const len = Math.hypot(x, z) || 1;
             const out = 1 + 1.4 * (1 - m);
-            const ox = m < 0.5 ? (x / CFG.R) * out : 0;
-            const oz = m < 0.5 ? (z / CFG.R) * out : 0;
+            const ox = m < 0.5 ? (x / len) * out : 0;
+            const oz = m < 0.5 ? (z / len) * out : 0;
             sizeSprite(acct, 0.62 * (1 - 0.38 * m));
             acct.position.set(
                 x + ox * (1 - m),
@@ -393,18 +547,22 @@ export class TowerView implements View3D {
     }
 
     /** Ring through the nodes and faint column guides. */
-    private updateBaseLines(m: number) {
+    private updateBaseLines() {
         const n = this.state.nodes.length;
         const { colX, colZ, baseLines } = this;
         const NY = CFG.NODE_Y;
-        const bottom = -CFG.window * CFG.VS;
+        const bottom = -CFG.window * this.vs;
         baseLines.reset();
+        const { ringX: rx, ringZ: rz, ringNode: rn } = this;
+        const segments = this.ringClosed ? rx.length : rx.length - 1;
+        for (let a = 0; a < segments; a++) {
+            const b = (a + 1) % rx.length;
+            const c1 = this.nodeColor(rn[a]);
+            const c2 = this.nodeColor(rn[b]);
+            baseLines.push(rx[a], NY, rz[a], rx[b], NY, rz[b], c1, 0.35, c2, 0.35);
+        }
         for (let i = 0; i < n; i++) {
-            const j = (i + 1) % n;
             const c1 = this.nodeColor(i);
-            const c2 = this.nodeColor(j);
-            if (!(j === 0 && m > 0.5))
-                baseLines.push(colX[i], NY, colZ[i], colX[j], NY, colZ[j], c1, 0.35, c2, 0.35);
             baseLines.push(colX[i], NY - 0.5, colZ[i], colX[i], bottom, colZ[i], c1, 0.13, c1, 0);
         }
         baseLines.flush();
@@ -447,9 +605,9 @@ export class TowerView implements View3D {
         visible.length = 0;
         threadLines.reset();
         trailLines.reset();
-        let ti = 0;
-        let di = 0;
-        let si = 0;
+        txMesh.reset();
+        dotMesh.reset();
+        shockMesh.reset();
         let prev: Tx | null = null;
 
         for (let k = txs.length - 1; k >= 0; k--) {
@@ -492,20 +650,16 @@ export class TowerView implements View3D {
                 }
                 const ds = tx === tracked ? 0.3 : 0.13;
                 this.remember(tx, bz[0], bz[1], bz[2]);
-                if (di < DOT_CAP - 10) {
-                    tmpM.makeScale(ds, ds, ds).setPosition(bz[0], bz[1], bz[2]);
-                    dotMesh.setMatrixAt(di, tmpM);
-                    dotMesh.setColorAt(di, col);
-                    di++;
-                }
+                tmpM.makeScale(ds, ds, ds).setPosition(bz[0], bz[1], bz[2]);
+                dotMesh.add(tmpM, col);
                 continue;
             }
 
             // ---- landed: rests in its node's column at its consensus time ----
             const age = displayRel - tx.ct;
-            if (age > win || ti >= TX_CAP - 10) break;
+            if (age > win) break;
             const born = realT - tx.landedReal;
-            let y = -age * CFG.VS;
+            let y = -age * this.vs;
             if (born < 0.35) {
                 const q = born / 0.35;
                 y = NY + (y - NY) * q * (2 - q);
@@ -521,33 +675,25 @@ export class TowerView implements View3D {
                 (fx && born < 0.5 ? 1 + 1.3 * (1 - born / 0.5) : 1) *
                 (whale ? 1.8 : 1);
             tmpM.makeScale(s, s, s).setPosition(x, y, z);
-            txMesh.setMatrixAt(ti, tmpM);
-            txMesh.setColorAt(ti, this.txColor(tx, tmpC, fade, born));
-            ti++;
+            txMesh.add(tmpM, this.txColor(tx, tmpC, fade, born));
 
             // flashy: a shockwave ring and a burst of sparks at the node when a transaction lands
             if (fx && born < 0.8) {
                 const q = born / 0.8;
                 const col = tx === tracked ? GOLD : pal.kind(tx.kind);
-                if (si < SHOCK_CAP - 10) {
-                    dummy.position.set(x, NY, z);
-                    dummy.rotation.set(Math.PI / 2, 0, 0);
-                    dummy.scale.setScalar(0.3 + q * 1.8);
-                    dummy.updateMatrix();
-                    shockMesh.setMatrixAt(si, dummy.matrix);
-                    shockMesh.setColorAt(si, this.fadedColor(tmpC2, col, 1 - q, 1.2));
-                    si++;
-                }
-                for (let k2 = 0; k2 < 6 && di < DOT_CAP - 10; k2++) {
+                dummy.position.set(x, NY, z);
+                dummy.rotation.set(Math.PI / 2, 0, 0);
+                dummy.scale.setScalar(0.3 + q * 1.8);
+                dummy.updateMatrix();
+                shockMesh.add(dummy.matrix, this.fadedColor(tmpC2, col, 1 - q, 1.2));
+                for (let k2 = 0; k2 < 6; k2++) {
                     const a = k2 * 1.047 + tx.ct * 7.3;
                     const rr = q * 1.6;
                     const ss = 0.05 * (1 - q) + 0.01;
                     // prettier-ignore
                     tmpM.makeScale(ss, ss, ss)
                         .setPosition(x + Math.cos(a) * rr, NY + q * 1.2 - q * q * 2, z + Math.sin(a) * rr);
-                    dotMesh.setMatrixAt(di, tmpM);
-                    dotMesh.setColorAt(di, this.fadedColor(tmpC2, col, 1 - q, 1.4));
-                    di++;
+                    dotMesh.add(tmpM, this.fadedColor(tmpC2, col, 1 - q, 1.4));
                 }
             }
 
@@ -556,15 +702,13 @@ export class TowerView implements View3D {
                 const wb = realT - tx.whaleAt;
                 const kf = 1.2 * (1 - wb / 4);
                 trailLines.push(x, NY + 9, z, x, y, z, GOLD, kf * 0.2, GOLD, kf);
-                if (si < SHOCK_CAP - 10 && wb < 1.6) {
+                if (wb < 1.6) {
                     const q = wb / 1.6;
                     dummy.position.set(x, NY, z);
                     dummy.rotation.set(Math.PI / 2, 0, 0);
                     dummy.scale.setScalar(0.5 + q * 5);
                     dummy.updateMatrix();
-                    shockMesh.setMatrixAt(si, dummy.matrix);
-                    shockMesh.setColorAt(si, this.fadedColor(tmpC2, GOLD, 1 - q, 1.5));
-                    si++;
+                    shockMesh.add(dummy.matrix, this.fadedColor(tmpC2, GOLD, 1 - q, 1.5));
                 }
             }
 
@@ -572,7 +716,7 @@ export class TowerView implements View3D {
             // consensus order thread: link each transaction to the next one in the global order
             if (prev) {
                 const hot = prev === tracked || tx === tracked;
-                const kk = (hot ? 0.9 : fx ? 0.32 : 0.42) * fade;
+                const kk = (hot ? 0.9 : (fx ? 0.32 : 0.42) * this.threadGain) * fade;
                 const c1 = hot ? GOLD : pal.kind(tx.kind);
                 const c2 = hot ? GOLD : pal.kind(prev.kind);
                 threadLines.push(x, y, z, prev.px, prev.py, prev.pz, c1, kk, c2, kk);
@@ -580,13 +724,9 @@ export class TowerView implements View3D {
             prev = tx;
         }
 
-        txMesh.count = ti;
-        dotMesh.count = di;
-        shockMesh.count = si;
-        for (const mm of [txMesh, dotMesh, shockMesh]) {
-            mm.instanceMatrix.needsUpdate = true;
-            mm.instanceColor!.needsUpdate = true;
-        }
+        txMesh.flush();
+        dotMesh.flush();
+        shockMesh.flush();
         threadLines.flush();
         trailLines.flush();
     }
@@ -620,15 +760,14 @@ export class TowerView implements View3D {
 
     /** A ring at each record file's closing timestamp; every 5th block is labelled. */
     private updateBlocks(m: number) {
-        const { state, fx, pal, colX, colZ, tmpC, ringLines } = this;
-        const n = state.nodes.length;
+        const { state, fx, pal, colX, tmpC, ringLines } = this;
         const win = CFG.window;
         ringLines.reset();
         const used = new Set<TextSprite>();
         for (const b of state.blocks) {
             const age = state.displayRel - b.to;
             if (age < 0 || age > win) continue;
-            const y = -age * CFG.VS;
+            const y = -age * this.vs;
             const flash =
                 b.sealedAt !== null ? Math.max(0, 1 - (state.realT - b.sealedAt) / 1.4) : 0;
             tmpC.copy(pal.block[b.num % pal.block.length]);
@@ -641,7 +780,7 @@ export class TowerView implements View3D {
 
             // flashy: a sealed block sends a shock ring outward from the tower
             if (fx && flash > 0 && m < 0.5) {
-                const rr = CFG.R + (1 - flash) * 7;
+                const rr = this.reach + (1 - flash) * 7;
                 const kf = flash * 0.9;
                 for (let s2 = 0; s2 < 64; s2++) {
                     const a0 = (s2 / 64) * Math.PI * 2;
@@ -651,14 +790,10 @@ export class TowerView implements View3D {
                         Math.cos(a1) * rr, y, Math.sin(a1) * rr, tmpC, kf, tmpC, kf);
                 }
             }
-            for (let i = 0; i < n; i++) {
-                const j = (i + 1) % n;
-                if (j === 0 && m > 0.5) break;
-                ringLines.push(colX[i], y, colZ[i], colX[j], y, colZ[j], tmpC, kk, tmpC, kk);
-            }
+            this.pushRing(ringLines, y, tmpC, kk);
             if (!major) continue;
             const lab = this.blockLabel(b.num, b.count);
-            if (m < 0.5) this.placeLabelOutside(lab, y, 0.9, CFG.R + 3.2);
+            if (m < 0.5) this.placeLabelOutside(lab, y, 0.9, this.reach + 3.2);
             else lab.position.set(colX[0] - 3.4, y, 0.4);
             lab.material.opacity = Math.min(1, (win - age) / FADE);
             lab.visible = true;
@@ -669,14 +804,10 @@ export class TowerView implements View3D {
 
     /** The top of the tower is "now" on the replayed timeline. Flushes the ring batch. */
     private updateClock(m: number, dt: number) {
-        const { state, fx, colX, colZ, ringLines } = this;
+        const { state, fx, colX, ringLines } = this;
         const GOLD = this.pal.gold;
         const n = state.nodes.length;
-        for (let i = 0; i < n; i++) {
-            const j = (i + 1) % n;
-            if (j === 0 && m > 0.5) break;
-            ringLines.push(colX[i], 0, colZ[i], colX[j], 0, colZ[j], GOLD, 0.6, GOLD, 0.6);
-        }
+        this.pushRing(ringLines, 0, GOLD, 0.6);
         // flashy: a gold radar sweep circles the consensus clock, over a faint glowing disc
         if (fx && m < 0.5) {
             for (let s2 = 0; s2 < 16; s2++) {
@@ -694,7 +825,7 @@ export class TowerView implements View3D {
         if (fx) this.backdrop.tick(state.realT, dt);
         ringLines.flush();
         const label = this.nowLabel!;
-        if (m < 0.5) this.placeLabelOutside(label, 0, -0.75, CFG.R + 4.5);
+        if (m < 0.5) this.placeLabelOutside(label, 0, -0.75, this.reach + 4.5);
         else label.position.set(colX[n - 1] + 4.6, 0, 0.4);
     }
 

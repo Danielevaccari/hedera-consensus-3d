@@ -5,12 +5,13 @@ import { STORAGE_KEYS, UI_INTERVAL } from "../config";
 import { AbortedError, MirrorClient } from "../api/MirrorClient";
 import { prefersReducedMotion } from "../lib/device";
 import { readStorage, writeStorage } from "../lib/storage";
+import type { Network } from "../network";
 import { Store } from "../lib/store";
 import { GlobeView } from "../scene/globe/GlobeView";
 import { buildMorphParticles, MorphOverlay } from "../scene/MorphOverlay";
 import type { Theme } from "../scene/palette";
 import { createRenderer } from "../scene/renderer";
-import { TowerView } from "../scene/TowerView";
+import { TowerView, type LayoutId } from "../scene/TowerView";
 import type { MorphSample, View3D, ViewId } from "../scene/View3D";
 import { errorMessage, Feed } from "./Feed";
 import { LiveState } from "./LiveState";
@@ -26,6 +27,9 @@ import {
     type UiSnapshot,
 } from "./snapshot";
 import type { Hover, Tx } from "./types";
+
+/** Everything the top-bar control offers: the tower in one of its layouts, or the globe. */
+export type ShapeId = LayoutId | "globe";
 
 export interface HoverState {
     target: Hover;
@@ -52,7 +56,7 @@ export class Engine {
 
     private logger: Logger;
     private state: LiveState;
-    private client = new MirrorClient();
+    private client: MirrorClient;
     private feed: Feed;
     private renderer;
     private tower: TowerView;
@@ -86,10 +90,12 @@ export class Engine {
     constructor(
         private canvas: HTMLCanvasElement,
         viewport: HTMLElement,
+        private network: Network,
     ) {
+        this.client = new MirrorClient(network.mirrorHost);
         this.logger = new Logger(() => this.state.clock());
         this.state = new LiveState(this.market, this.logger);
-        this.feed = new Feed(this.client, this.state, this.market, this.logger);
+        this.feed = new Feed(this.client, this.state, this.market, this.logger, network);
         this.renderer = createRenderer(canvas);
         this.tower = new TowerView(this.renderer, canvas, this.state, this.market);
         this.globe = new GlobeView(this.renderer, canvas, this.state);
@@ -104,6 +110,8 @@ export class Engine {
         // the inline script in index.html has already applied the saved theme to <html>
         this.theme = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
         this.view = initialView();
+        const layout = readStorage(STORAGE_KEYS.layout);
+        if (layout === "rect" || layout === "wall") this.tower.setLayout(layout, false); // round is the default
         for (const v of [this.tower, this.globe]) {
             v.setTheme(this.theme);
             v.setFx(this.fxPref);
@@ -222,12 +230,13 @@ export class Engine {
 
     get options(): Options {
         return {
+            network: this.network,
             paused: this.paused,
             fx: this.fxPref,
             theme: this.theme,
             view: this.view,
             hidePings: this.state.hidePings,
-            unrolled: this.tower.unrolled,
+            layout: this.tower.layout,
             autoRotate: this.active.autoRotate,
             charts: this.charts,
             motion: this.motion,
@@ -330,8 +339,21 @@ export class Engine {
         this.publish();
     }
 
-    toggleUnroll() {
-        this.tower.unrolled = !this.tower.unrolled;
+    /**
+     * Picks how the network is drawn. Coming from the globe the tower appears already in its
+     * layout (the view switch animates that change); within the tower the layout morphs.
+     */
+    choose(shape: ShapeId) {
+        if (shape === "globe") return this.setView("globe");
+        if (this.view !== "globe") return this.setLayout(shape);
+        this.tower.setLayout(shape, false);
+        writeStorage(STORAGE_KEYS.layout, shape);
+        this.setView("tower");
+    }
+
+    setLayout(layout: LayoutId) {
+        this.tower.setLayout(layout);
+        writeStorage(STORAGE_KEYS.layout, layout);
         this.publish();
     }
 

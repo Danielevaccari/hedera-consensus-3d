@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import type { Stats } from "../../engine/snapshot";
+import type { Network } from "../../network";
 import { fmtStake } from "../../lib/format";
 import {
     EventAnatomy,
@@ -59,7 +60,7 @@ const PIECES: Piece[] = [
             <>
                 The parent links form a directed acyclic graph: one line per node, with a cross-link
                 for every sync. Every node holds a copy, and the copies differ only at the newest
-                edges. On mainnet this graph exists only inside the nodes. The view above shows what
+                edges. On Hedera this graph exists only inside the nodes. The view above shows what
                 comes out of it: every transaction with the timestamp and order the graph produced.
             </>
         ),
@@ -141,14 +142,15 @@ const PIECES: Piece[] = [
 ];
 
 /** Live network numbers next to the algorithm's constants. */
-function Numbers({ stats }: { stats: Stats | null }) {
+function Numbers({ stats, network }: { stats: Stats | null; network: Network }) {
     const dash = "—";
     return (
         <div className="numbers">
             <div className="num">
                 <b>{stats ? stats.nodes : dash}</b>
                 <span>
-                    consensus nodes on Hedera mainnet right now, loaded live from the mirror node
+                    consensus nodes on Hedera {network.label} right now, loaded live from the mirror
+                    node
                 </span>
             </div>
             <div className="num">
@@ -178,7 +180,7 @@ function Numbers({ stats }: { stats: Stats | null }) {
     );
 }
 
-export function Explainer({ stats }: { stats: Stats | null }) {
+export function Explainer({ stats, network }: { stats: Stats | null; network: Network }) {
     return (
         <main className="explain">
             <div className="eyebrow">How it works</div>
@@ -188,9 +190,9 @@ export function Explainer({ stats }: { stats: Stats | null }) {
                 single vote over the network. Nodes only gossip. Each node can then work out from
                 its own copy of the graph how every other node <em>would</em> vote, so every honest
                 node arrives at the same order of transactions. The 3D view above shows the result
-                of that process on Hedera mainnet, live.
+                of that process on Hedera {network.label}, live.
             </p>
-            <Numbers stats={stats} />
+            <Numbers stats={stats} network={network} />
             <div className="grid">
                 {PIECES.map(p => (
                     <article
@@ -204,7 +206,7 @@ export function Explainer({ stats }: { stats: Stats | null }) {
                     </article>
                 ))}
             </div>
-            <Sources />
+            <Sources network={network} />
         </main>
     );
 }
